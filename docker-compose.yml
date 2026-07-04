@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:16
+    container_name: service_tracker_db
+    environment:
+      POSTGRES_USER: service
+      POSTGRES_PASSWORD: service
+      POSTGRES_DB: service_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+# Phase 6 adds api + web + nginx services here.
+
+volumes:
+  pgdata:

@@ -1,0 +1,20 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlmodel==0.0.22
+psycopg[binary]==3.2.3
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1  # pinned: passlib 1.7.4 is incompatible with bcrypt>=4.1
+python-multipart==0.0.20
+openpyxl==3.1.5
+
+# AI layer (Phase 5) — optional at runtime; the app degrades to deterministic
+# fallbacks when these are absent or no provider is configured (see services/ai).
+# All are free / open-source. Provider is chosen at runtime via AI_PROVIDER.
+langgraph==0.2.60
+langchain-core==0.3.28
+langchain-groq==0.2.1      # cloud free tier (pulls in the groq SDK)
+langchain-ollama==0.2.1    # fully local / offline provider
+tenacity==9.0.0

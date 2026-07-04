@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/.env
+
+# Local SQLite (dev/preview only; prod uses Postgres)
+*.db
+
+# Node
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Editor/agent local settings
+.claude/settings.local.json
+
+# Env / OS
+.env
+.DS_Store
+Thumbs.db
+
+# Excel lock files
+~$*.xlsx
+~$*.docx
