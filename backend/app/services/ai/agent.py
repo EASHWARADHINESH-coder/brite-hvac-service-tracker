@@ -46,11 +46,23 @@ def _build_agent(session, user: User, proposals: list[dict]):
 
     try:
         from langgraph.prebuilt import create_react_agent
-
-        return create_react_agent(model, tools, prompt=_SYSTEM_PROMPT)
-    except Exception:  # noqa: BLE001 — any construction failure -> deterministic fallback
-        logger.exception("Failed to build LangGraph agent; using deterministic fallback")
+    except Exception:  # noqa: BLE001 — langgraph missing -> deterministic fallback
+        logger.exception("Failed to import LangGraph; using deterministic fallback")
         return None
+
+    # The system-prompt kwarg was renamed across langgraph versions: newer releases use
+    # `prompt=`, 0.2.x uses `state_modifier=`. Try each so we work on both.
+    for kw in ("prompt", "state_modifier"):
+        try:
+            return create_react_agent(model, tools, **{kw: _SYSTEM_PROMPT})
+        except TypeError:
+            continue  # this version doesn't accept that kwarg — try the other
+        except Exception:  # noqa: BLE001 — real construction failure -> fallback
+            logger.exception("Failed to build LangGraph agent; using deterministic fallback")
+            return None
+
+    logger.error("create_react_agent: no compatible system-prompt kwarg found")
+    return None
 
 
 async def _stream_fallback(session, user: User, question: str):
