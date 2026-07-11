@@ -13,6 +13,8 @@ class Customer(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True)
+    # CRM "Customer Id" (e.g. CID-14430) from the PMS export — dedupe key for imports.
+    crm_customer_id: Optional[str] = Field(default=None, index=True)
     address: Optional[str] = None
     city: Optional[str] = None
     pincode: Optional[str] = None
