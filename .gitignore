@@ -17,6 +17,8 @@ frontend/tsconfig.tsbuildinfo
 
 # Env / OS
 .env
+.env.prod
+backend/.env.prod
 .DS_Store
 Thumbs.db
 

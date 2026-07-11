@@ -1,0 +1,27 @@
+# Production stack for a single VPS: FastAPI (api) + nginx-served React (web), SQLite on a volume.
+# Usage:  docker compose -f docker-compose.prod.yml up -d --build
+services:
+  api:
+    build: ./backend
+    container_name: st_api
+    env_file: ./backend/.env.prod
+    environment:
+      # SQLite file on the mounted volume (four slashes = absolute /data/prod.db).
+      DATABASE_URL: sqlite:////data/prod.db
+    volumes:
+      - st_data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    container_name: st_web
+    depends_on:
+      - api
+    ports:
+      - "80:80"      # public entry point; add 443 + TLS when a domain is attached
+    restart: unless-stopped
+
+volumes:
+  st_data:            # persists the SQLite database across restarts/redeploys
