@@ -3,6 +3,9 @@ import type {
   ActionResult,
   AgentProposal,
   AgentStreamMessage,
+  AIHealth,
+  AIJob,
+  AIMetrics,
   AIStatus,
   AppUser,
   AssistantReply,
@@ -292,6 +295,13 @@ export const askAssistant = (question: string) =>
 
 export const executeAction = (proposal: AgentProposal) =>
   data<ActionResult>(api.post("/ai/actions/execute", { proposal }));
+
+// ---- AI status panel (Phase 6) ----
+export const getAIHealth = () => data<AIHealth>(api.get("/ai/health"));
+export const getAIMetrics = () => data<AIMetrics>(api.get("/ai/metrics"));
+export const reindexAI = () =>
+  data<{ job_id: number; status: string }>(api.post("/ai/reindex", {}));
+export const getAIJob = (id: number) => data<AIJob>(api.get(`/ai/jobs/${id}`));
 
 // Stream the agent's final-answer tokens over SSE. Uses fetch (not EventSource) so the
 // bearer token can be sent as a header. Handlers fire as messages arrive.

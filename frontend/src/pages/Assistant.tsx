@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Button, Card, Input, PageHeader } from "../components/ui/primitives";
+import AIStatusPanel from "../components/features/ai/AIStatusPanel";
 import { useAuth } from "../context/AuthContext";
 import {
   executeAction,
@@ -115,6 +116,8 @@ export default function Assistant() {
           </span>
         }
       />
+
+      <AIStatusPanel />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Chat */}

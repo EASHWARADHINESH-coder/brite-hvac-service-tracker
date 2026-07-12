@@ -417,3 +417,39 @@ export type AgentStreamMessage =
   | { type: "token"; text: string }
   | { type: "proposal"; proposal: AgentProposal }
   | { type: "done"; used_llm: boolean; provider: string };
+
+// ---- AI status panel (Phase 6) ----
+export interface AIHealth {
+  enabled: boolean;
+  provider: string;
+  chat_model: string;
+  llm_available: boolean;
+  model_chain: string[];
+  embeddings_model: string;
+  vector_store: boolean;
+  indexed_documents: number;
+  circuit: { open: boolean; failures: number; cooldown_remaining: number };
+}
+
+export interface AIOpMetric {
+  operation: string;
+  count: number;
+  avg_ms: number;
+  max_ms: number;
+}
+
+export interface AIMetrics {
+  total: number;
+  errors?: number;
+  error_rate: number;
+  cache_hits?: number;
+  cache_hit_rate: number;
+  by_operation: AIOpMetric[];
+}
+
+export interface AIJob {
+  id: number;
+  kind: string;
+  status: string;
+  detail?: string | null;
+}
