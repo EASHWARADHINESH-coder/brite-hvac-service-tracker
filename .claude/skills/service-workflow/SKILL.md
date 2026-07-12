@@ -92,6 +92,12 @@ python -m app.import_breakdown "<file>.xlsx"   :: Breakdown tickets; auto-close 
 - Enable AI: set `AI_ENABLED=true`, `AI_PROVIDER=ollama`, `pip install -r requirements.txt`,
   `ollama pull llama3.2:3b nomic-embed-text` (+ fallbacks), then `POST /ai/reindex`.
 
+## MCP server (external clients — `backend/app/mcp_server.py`, see `MCP.md`)
+FastMCP over the service layer, **read-only**, **stdio**. Exposes 7 tools (dashboard_overview,
+search_tickets, get_ticket, stock_levels, pms_due, payment_follow_up, find_similar_tickets) to
+MCP clients like Claude Desktop, acting as a Service Admin identity. Run: `python -m app.mcp_server`.
+Pinned `mcp==1.9.4` (Starlette 0.41.x for FastAPI compat). Same services/RAG as the in-app agent.
+
 ## Deployment (Hostinger VPS — Docker + SQLite)
 See `DEPLOY.md`. `docker-compose.prod.yml` runs `api` (uvicorn) + `web` (nginx serves the SPA and
 proxies `/api`); SQLite on a persistent volume. Ships `AI_ENABLED=false` by default (flip on with a
