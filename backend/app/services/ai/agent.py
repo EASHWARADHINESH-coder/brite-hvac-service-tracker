@@ -19,7 +19,7 @@ import logging
 from app.core.config import get_settings
 from app.models.user import User
 from app.services.ai import assistant
-from app.services.ai.llm import get_chat_model
+from app.services.ai.llm import first_available_chat_model
 from app.services.ai.tools import build_tools
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ _SYSTEM_PROMPT = (
 
 def _build_agent(session, user: User, proposals: list[dict]):
     """Construct a LangGraph ReAct agent, or None if the stack/model is unavailable."""
-    model = get_chat_model(streaming=True)
+    model = first_available_chat_model(streaming=True)
     if model is None:
         return None
 

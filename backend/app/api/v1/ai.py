@@ -33,7 +33,7 @@ from app.schemas.ai import (
 from app.services.ai import actions, agent, assistant, delivery_note, jobs, metrics as ai_metrics, ranking, rag, vectorstore
 from app.services.ai.actions import ActionError
 from app.services.ai.cache import all_stats
-from app.services.ai.llm import llm_available
+from app.services.ai.llm import llm_available, provider_model_chain
 from app.services.ai.reliability import llm_breaker
 from app.services.ai.security import ai_rate_limiter, guard_prompt
 from app.services.permissions import can_view_ticket, is_privileged
@@ -149,6 +149,7 @@ def ai_health():
         "provider": s.ai_provider,
         "chat_model": s.ollama_model if s.ai_provider == "ollama" else s.groq_model,
         "llm_available": llm_available(),
+        "model_chain": [f"{p}:{m}" for p, m in provider_model_chain()],
         "embeddings_model": s.ollama_embed_model,
         "vector_store": vectorstore.vec_available(),
         "indexed_documents": vectorstore.count(),

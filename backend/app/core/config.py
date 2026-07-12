@@ -30,13 +30,26 @@ class Settings(BaseSettings):
     # Ollama (fully local, no key — run `ollama serve` and `ollama pull <model>`)
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+    # Ordered local fallback models (comma-separated Ollama tags), tried in turn after the
+    # primary if it errors/isn't pulled. All free/local. Principle 2 — model-level failover.
+    ollama_fallback_models: str = "qwen2.5:3b,gemma2:2b"
 
     # Embeddings for the RAG / semantic-search layer (always local Ollama, free).
     ollama_embed_model: str = "nomic-embed-text"
     ollama_embed_dim: int = 768
 
-    # Reliability: try the other provider if the primary errors (Principle 2 — failover).
-    ai_failover: bool = True
+    # If True, fall over to Groq (cloud) after every local model fails. Default off = local-only.
+    ai_cloud_failover: bool = False
+
+    @property
+    def ollama_model_chain(self) -> list[str]:
+        """Primary model followed by the configured fallbacks (deduped, order preserved)."""
+        chain: list[str] = []
+        for m in [self.ollama_model, *self.ollama_fallback_models.split(",")]:
+            m = m.strip()
+            if m and m not in chain:
+                chain.append(m)
+        return chain
 
     @property
     def ai_ready(self) -> bool:
