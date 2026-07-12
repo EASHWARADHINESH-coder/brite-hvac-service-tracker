@@ -60,3 +60,13 @@ class ActionResultOut(BaseModel):
     ticket_id: int | None = None
     ticket_no: str | None = None
     message: str
+
+
+class RetrievedOut(BaseModel):
+    """A semantic-search hit (ticket or customer)."""
+
+    kind: str
+    ref_id: int
+    label: str
+    text: str
+    distance: float

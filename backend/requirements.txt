@@ -18,3 +18,4 @@ langchain-core==0.3.28
 langchain-groq==0.2.1      # cloud free tier (pulls in the groq SDK)
 langchain-ollama==0.2.1    # fully local / offline provider
 tenacity==9.0.0
+sqlite-vec==0.1.9          # local vector store for RAG / semantic search (Phase 6)

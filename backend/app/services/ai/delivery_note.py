@@ -107,6 +107,7 @@ def _maybe_enhance(draft: DeliveryNoteDraft) -> None:
         ),
         user=draft.body,
         temperature=0.3,
+        operation="delivery",
     )
     if reply and reply.strip():
         draft.body = reply.strip()

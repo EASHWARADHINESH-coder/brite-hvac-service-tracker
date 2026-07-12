@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
 
+    # Embeddings for the RAG / semantic-search layer (always local Ollama, free).
+    ollama_embed_model: str = "nomic-embed-text"
+    ollama_embed_dim: int = 768
+
+    # Reliability: try the other provider if the primary errors (Principle 2 — failover).
+    ai_failover: bool = True
+
     @property
     def ai_ready(self) -> bool:
         """True only when the LLM path is usable for the configured provider.

@@ -4,8 +4,11 @@ __pycache__/
 .venv/
 backend/.env
 
-# Local SQLite (dev/preview only; prod uses Postgres)
+# Local SQLite (dev/preview only) + WAL sidecar files
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Node
 node_modules/

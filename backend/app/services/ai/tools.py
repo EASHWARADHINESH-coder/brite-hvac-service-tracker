@@ -173,7 +173,18 @@ def build_tools(session, user: User, proposals: list[dict]):
             + ". Tell the user this needs their explicit confirmation to proceed."
         )
 
-    return [
+    @tool
+    def find_similar_tickets(description: str) -> str:
+        """Semantic search: find past service tickets similar to a described problem/complaint.
+        Use this to see how similar issues were handled before."""
+        from app.services.ai import rag
+
+        hits = rag.retrieve(session, description, k=5, kind="ticket")
+        if not hits:
+            return "No similar past tickets found (the semantic index may be empty — run reindex)."
+        return "; ".join(f"{h.label}: {h.text}" for h in hits)
+
+    tools = [
         ticket_stats,
         overdue_tickets,
         rank_unassigned_tickets,
@@ -181,3 +192,7 @@ def build_tools(session, user: User, proposals: list[dict]):
         search_tickets,
         propose_create_ticket,
     ]
+    # Semantic retrieval is org-wide, so only privileged users get it (scope safety).
+    if is_privileged(user):
+        tools.append(find_similar_tickets)
+    return tools

@@ -105,7 +105,16 @@ def answer(session: Session, user: User, question: str, today: date | None = Non
 
     deterministic = _deterministic_answer(question, snap)
 
-    reply = _llm_answer(question, snap)
+    # RAG grounding: retrieve relevant past tickets/customers (best-effort; [] if unavailable).
+    from app.services.ai import rag
+
+    context = ""
+    if is_privileged(user):  # scope: only privileged users get org-wide retrieval
+        hits = rag.retrieve(session, question, k=4)
+        if hits:
+            context = "\n".join(f"- {h.text}" for h in hits)
+
+    reply = _llm_answer(question, snap, context)
     if reply is not None:
         return AssistantReply(answer=reply, source="llm", used_llm=True)
 
@@ -121,8 +130,8 @@ def answer(session: Session, user: User, question: str, today: date | None = Non
     )
 
 
-def _llm_answer(question: str, snap: dict) -> str | None:
-    """Free-form answer grounded in the snapshot. None when the LLM is unavailable."""
+def _llm_answer(question: str, snap: dict, context: str = "") -> str | None:
+    """Free-form answer grounded in the snapshot + retrieved records. None if LLM unavailable."""
     from app.services.ai.llm import chat, llm_available
 
     if not llm_available():
@@ -130,12 +139,14 @@ def _llm_answer(question: str, snap: dict) -> str | None:
 
     import json
 
+    ctx_block = f"\n\nRelevant records (retrieved):\n{context}" if context else ""
     reply = chat(
         system=(
             "You are the assistant for an HVAC service CRM. Answer the user's question using "
-            "ONLY the JSON facts provided. If the facts don't cover it, say so plainly. Be "
-            "concise (1-3 sentences). Do not invent numbers."
+            "ONLY the JSON facts and the retrieved records provided. If they don't cover it, "
+            "say so plainly. Be concise (1-3 sentences). Do not invent numbers."
         ),
-        user=f"Facts:\n{json.dumps(snap)}\n\nQuestion: {question}",
+        user=f"Facts:\n{json.dumps(snap)}{ctx_block}\n\nQuestion: {question}",
+        operation="assistant",
     )
     return reply.strip() if reply and reply.strip() else None

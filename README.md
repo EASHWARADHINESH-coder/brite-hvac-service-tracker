@@ -62,6 +62,7 @@ record material usage), **Helper** (view only their own tasks).
 | `materials-ledger`  | `stock` · `inward` (list/create) · `issues` (list/allocate) · `issues/{id}/deliver` |
 | `dashboard/summary` | counts by status / work type / customers                              |
 | `ai`                | `status` · `rank-tickets` (Engineer+) · `tickets/{id}/delivery-note` (Engineer+) · `assistant` · `assistant/stream` (SSE agent) · `actions/execute` (Engineer+) |
+| `ai` (Phase 6)      | `health` · `metrics` · `search` (semantic) · `tickets/{id}/similar` · `reindex` (async) · `jobs/{id}` |
 
 Smoke test: `backend/.venv/Scripts/python smoke_test.py` (SQLite, no Postgres needed) — exercises
 ticket numbering, skill derivation, full lifecycle, reopen, PMS auto-dates, and the dashboard.
@@ -99,5 +100,13 @@ Dev server proxies `/api` to the backend (target overridable via `VITE_API_PROXY
   free tier, needs a free key) or `AI_PROVIDER=ollama` (fully local/offline, no key). Enable
   with `AI_ENABLED=true` and `pip install -r requirements.txt`. Deterministic + fallback paths
   and the guarded write path verified with the LLM off. Frontend **Assistant** page streams
-  tokens and surfaces a Confirm button for proposed actions. Remaining (Phase 6): Docker deploy.
-  See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+  tokens and surfaces a Confirm button for proposed actions.
+- **Phase 6 — production AI layer:** the 8 production-AI system-design principles, right-sized
+  for one VPS, all free/local: **caching** (LLM + embedding), **monitoring** (`/ai/metrics` —
+  latency, error & cache-hit rates), **reliability** (circuit breaker + retries + SQLite WAL),
+  **security** (prompt-injection guard + per-user rate limiting), **async queues** (background
+  `reindex` job), **provider failover** (Ollama⇄Groq), and a **RAG / semantic-search** layer —
+  `sqlite-vec` + local Ollama embeddings (`nomic-embed-text`) over tickets & customers, powering
+  `/ai/search`, `/ai/tickets/{id}/similar`, an agent `find_similar_tickets` tool, and grounded
+  assistant answers. Verified live against local Ollama. Deployment (Hostinger VPS) is prepared
+  in [DEPLOY.md](DEPLOY.md). See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).

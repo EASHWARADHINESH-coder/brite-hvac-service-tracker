@@ -139,6 +139,7 @@ def add_rationales(ranked: list[RankedTicket]) -> list[RankedTicket]:
         ),
         user=f"Tickets ranked by urgency:\n{lines}",
         json_mode=True,
+        operation="rank",
     )
     if not reply:
         return ranked
