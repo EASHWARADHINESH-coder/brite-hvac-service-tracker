@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
 
 import StatusBadge from "../components/ui/StatusBadge";
 import {
@@ -108,6 +109,10 @@ export default function TicketDetail() {
   const latestStage = latest?.stage ?? "Logged";
   const isClosed = ticket.status === "Closed";
   const isAssigned = !!ticket.is_assigned;
+
+  // Absolute URL to the phone-first view (respects the app's deployed base path).
+  const mobileUrl =
+    `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, "")}/m/ticket/${ticket.id}`;
 
   // Which guided step to show next.
   const step: "assign" | "work_started" | "post_work" | "material" | "tc_close" | "reopen" =
@@ -295,6 +300,22 @@ export default function TicketDetail() {
               <Meta label="Balance ₹" value={`₹${(ticket.balance ?? 0).toLocaleString("en-IN")}`} />
             </>
           )}
+        </div>
+      </Card>
+
+      <Card className="mb-6 flex items-center gap-4">
+        <QRCodeSVG value={mobileUrl} size={92} />
+        <div className="text-sm">
+          <div className="font-medium text-slate-700">Open this job on a phone</div>
+          <div className="text-xs text-slate-400">Scan the QR, or open:</div>
+          <a
+            href={mobileUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="break-all text-xs text-sky-600 hover:underline"
+          >
+            {mobileUrl}
+          </a>
         </div>
       </Card>
 

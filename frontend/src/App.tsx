@@ -10,6 +10,7 @@ import CreateTicket from "./pages/CreateTicket";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Materials from "./pages/Materials";
+import MobileTicket from "./pages/MobileTicket";
 import Payments from "./pages/Payments";
 import PMSPage from "./pages/PMS";
 import Queries from "./pages/Queries";
@@ -37,6 +38,15 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Phone-first per-ticket view (no sidebar), reached by link/QR. Auth-gated. */}
+      <Route
+        path="/m/ticket/:id"
+        element={
+          <RequireAuth>
+            <MobileTicket />
+          </RequireAuth>
+        }
+      />
       <Route
         element={
           <RequireAuth>
