@@ -5,9 +5,10 @@ from sqlmodel import func, select
 
 from app.api.deps import SessionDep, get_current_user, require_admin
 from app.models.masters import Customer
+from app.models.material_claim import MaterialClaim
 from app.models.pms import PMS
 from app.models.tickets import Ticket
-from app.schemas.masters import CustomerCreate, CustomerRead
+from app.schemas.masters import CustomerCreate, CustomerMerge, CustomerRead, MergeResult
 
 router = APIRouter(
     prefix="/customers", tags=["customers"], dependencies=[Depends(get_current_user)]
@@ -69,6 +70,47 @@ def create_customer(payload: CustomerCreate, session: SessionDep):
     session.commit()
     session.refresh(customer)
     return _read(customer, _amc_customer_ids(session), date.today())
+
+
+@router.post("/merge", response_model=MergeResult, dependencies=[Depends(require_admin)])
+def merge_customers(payload: CustomerMerge, session: SessionDep):
+    """Merge duplicate customers into one surviving record.
+
+    Every ticket / PMS work order / material claim belonging to a duplicate is re-pointed at
+    the survivor, then the duplicate rows are deleted. The survivor's own details are kept
+    as-is — it's the record you chose to keep.
+    """
+    survivor = session.get(Customer, payload.survivor_id)
+    if not survivor:
+        raise HTTPException(404, "Surviving customer not found")
+
+    dup_ids = [i for i in dict.fromkeys(payload.duplicate_ids) if i != payload.survivor_id]
+    if not dup_ids:
+        raise HTTPException(400, "Pick at least one duplicate that isn't the surviving customer")
+
+    dups = session.exec(select(Customer).where(Customer.id.in_(dup_ids))).all()
+    if len(dups) != len(dup_ids):
+        raise HTTPException(404, "One or more duplicate customers were not found")
+
+    tickets = session.exec(select(Ticket).where(Ticket.customer_id.in_(dup_ids))).all()
+    pms_rows = session.exec(select(PMS).where(PMS.customer_id.in_(dup_ids))).all()
+    claims = session.exec(select(MaterialClaim).where(MaterialClaim.customer_id.in_(dup_ids))).all()
+
+    for row in (*tickets, *pms_rows, *claims):
+        row.customer_id = survivor.id
+        session.add(row)
+    for d in dups:
+        session.delete(d)
+    session.commit()
+
+    return MergeResult(
+        survivor_id=survivor.id,
+        survivor_name=survivor.name,
+        merged=len(dups),
+        tickets_moved=len(tickets),
+        pms_moved=len(pms_rows),
+        claims_moved=len(claims),
+    )
 
 
 @router.get("/{customer_id}", response_model=CustomerRead)

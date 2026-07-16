@@ -11,6 +11,7 @@ import type {
   AssistantReply,
   AuthToken,
   Complaint,
+  CustomerMergeResult,
   DeliveryNoteDraft,
   Customer,
   DashboardOverview,
@@ -69,6 +70,9 @@ export const createCustomer = (payload: Partial<Customer>) =>
 export const updateCustomer = (id: number, payload: Partial<Customer>) =>
   data<Customer>(api.put(`/customers/${id}`, payload));
 export const deleteCustomer = (id: number) => api.delete(`/customers/${id}`);
+// Merge duplicates into one surviving customer; their tickets/PMS/claims move over.
+export const mergeCustomers = (survivor_id: number, duplicate_ids: number[]) =>
+  data<CustomerMergeResult>(api.post("/customers/merge", { survivor_id, duplicate_ids }));
 
 // ---- Team ----
 export const listTeam = () => data<TeamMember[]>(api.get("/team"));

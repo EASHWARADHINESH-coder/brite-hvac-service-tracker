@@ -456,3 +456,12 @@ export interface AIJob {
   status: string;
   detail?: string | null;
 }
+
+export interface CustomerMergeResult {
+  survivor_id: number;
+  survivor_name: string;
+  merged: number;
+  tickets_moved: number;
+  pms_moved: number;
+  claims_moved: number;
+}

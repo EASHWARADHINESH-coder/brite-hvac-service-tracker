@@ -15,6 +15,7 @@ import {
   deleteCustomer,
   exportCustomers,
   listCustomers,
+  mergeCustomers,
   updateCustomer,
 } from "../api/services";
 import type { Customer } from "../types";
@@ -103,9 +104,47 @@ export default function Customers() {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  // Duplicate merge: tick 2+ rows, choose which record survives.
+  const [selected, setSelected] = useState<number[]>([]);
+  const [survivorId, setSurvivorId] = useState<string>("");
+  const [merging, setMerging] = useState(false);
 
   const load = (query?: string) => listCustomers(query).then(setCustomers);
   useEffect(() => { load(); }, []);
+
+  const toggle = (id: number) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const clearSelection = () => { setSelected([]); setSurvivorId(""); };
+
+  const doMerge = async () => {
+    const survivor = Number(survivorId);
+    if (!survivor) { setBanner("Choose which customer to keep."); return; }
+    const dups = selected.filter((id) => id !== survivor);
+    if (!dups.length) { setBanner("Select at least one duplicate to merge in."); return; }
+    const keepName = customers.find((c) => c.id === survivor)?.name ?? "";
+    if (!window.confirm(
+      `Merge ${dups.length} duplicate(s) into "${keepName}"?\n\n` +
+      "Their tickets, PMS work orders and material claims move to the kept customer, " +
+      "and the duplicate records are deleted. This cannot be undone.",
+    )) return;
+
+    setMerging(true);
+    setBanner(null);
+    try {
+      const r = await mergeCustomers(survivor, dups);
+      setBanner(
+        `Merged ${r.merged} duplicate(s) into "${r.survivor_name}" — moved ` +
+        `${r.tickets_moved} ticket(s), ${r.pms_moved} PMS work order(s), ${r.claims_moved} claim(s).`,
+      );
+      clearSelection();
+      load(q);
+    } catch (err: any) {
+      setBanner(err?.response?.data?.detail ?? "Could not merge customers.");
+    } finally {
+      setMerging(false);
+    }
+  };
 
   const shown = amcOnly ? customers.filter((c) => c.is_amc) : customers;
 
@@ -219,9 +258,46 @@ export default function Customers() {
         </label>
       </div>
 
-      <Table head={["Name", "City", "Contact person", "Primary mobile", "Email", ""]}>
+      {selected.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm">
+          <span className="font-medium text-amber-900">
+            {selected.length} selected
+          </span>
+          <span className="text-amber-800">Keep:</span>
+          <select
+            value={survivorId}
+            onChange={(e) => setSurvivorId(e.target.value)}
+            className="rounded-md border border-amber-300 bg-white px-2 py-1 text-sm"
+          >
+            <option value="">Choose the record to keep…</option>
+            {selected.map((id) => {
+              const c = customers.find((x) => x.id === id);
+              return <option key={id} value={id}>{c?.name ?? id}</option>;
+            })}
+          </select>
+          <Button onClick={doMerge} disabled={merging || selected.length < 2}>
+            {merging ? "Merging…" : "Merge duplicates"}
+          </Button>
+          <button onClick={clearSelection} className="text-xs text-amber-800 hover:underline">
+            Clear
+          </button>
+          {selected.length < 2 && (
+            <span className="text-xs text-amber-700">Select 2 or more to merge.</span>
+          )}
+        </div>
+      )}
+
+      <Table head={["", "Name", "City", "Contact person", "Primary mobile", "Email", ""]}>
         {shown.map((c) => (
-          <tr key={c.id}>
+          <tr key={c.id} className={selected.includes(c.id) ? "bg-amber-50" : undefined}>
+            <td className="px-4 py-2">
+              <input
+                type="checkbox"
+                aria-label={`Select ${c.name}`}
+                checked={selected.includes(c.id)}
+                onChange={() => toggle(c.id)}
+              />
+            </td>
             <td className="px-4 py-2 font-medium">
               <Link to={`/customers/${c.id}`} className="text-slate-800 hover:text-slate-900 hover:underline">
                 {c.name}
@@ -253,7 +329,7 @@ export default function Customers() {
           </tr>
         ))}
         {shown.length === 0 && (
-          <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">No customers yet</td></tr>
+          <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">No customers yet</td></tr>
         )}
       </Table>
 

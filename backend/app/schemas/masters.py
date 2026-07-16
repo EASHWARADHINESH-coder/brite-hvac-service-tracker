@@ -74,6 +74,22 @@ class CustomerRead(CustomerCreate):
     contract_status: str = "NIC"
 
 
+class CustomerMerge(SQLModel):
+    """Merge duplicate customer records into one surviving record."""
+
+    survivor_id: int          # the record to keep (its name/details win)
+    duplicate_ids: list[int]  # records whose tickets/PMS/claims move over, then are deleted
+
+
+class MergeResult(SQLModel):
+    survivor_id: int
+    survivor_name: str
+    merged: int = 0          # duplicate records removed
+    tickets_moved: int = 0
+    pms_moved: int = 0
+    claims_moved: int = 0
+
+
 # ---- Team ----
 class TeamMemberCreate(SQLModel):
     name: str
