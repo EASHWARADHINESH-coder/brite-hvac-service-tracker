@@ -62,6 +62,12 @@ export default function MobileTicket() {
           </div>
         )}
 
+        {ticket.mr_pending && (
+          <div className="rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-800">
+            MR Pending — Blue Star claim not yet completed
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm">
           <Meta label="Complaint date" value={ticket.complaint_date} />
           <Meta label="Work type" value={ticket.work_type} />

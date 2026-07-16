@@ -77,7 +77,7 @@ export default function Tickets() {
           onChange={(e) => setEnd(e.target.value)} />
       </div>
 
-      <Table head={["Ticket No.", "Customer", "Work Type", "Machine", "Skill", "Status"]}>
+      <Table head={["Ticket No.", "Customer", "City", "Work Type", "Machine", "Skill", "Status"]}>
         {shown.map((t) => (
           <tr key={t.id}>
             <td className="px-4 py-2 font-mono font-medium">
@@ -86,15 +86,21 @@ export default function Tickets() {
               </Link>
             </td>
             <td className="px-4 py-2">{t.customer_name ?? "—"}</td>
+            <td className="px-4 py-2 text-slate-500">{t.customer_city || "—"}</td>
             <td className="px-4 py-2">{t.work_type}</td>
             <td className="px-4 py-2">{t.machine_type ?? "—"}</td>
             <td className="px-4 py-2 text-slate-500">{t.skill || "—"}</td>
             <td className="px-4 py-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={t.status} />
                 {!t.is_assigned && t.assignment_overdue && (
                   <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-medium text-rose-700">
                     Assign overdue
+                  </span>
+                )}
+                {t.mr_pending && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                    MR Pending
                   </span>
                 )}
               </div>
@@ -102,7 +108,7 @@ export default function Tickets() {
           </tr>
         ))}
         {shown.length === 0 && (
-          <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">No tickets</td></tr>
+          <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">No tickets</td></tr>
         )}
       </Table>
     </div>

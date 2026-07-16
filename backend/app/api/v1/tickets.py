@@ -94,9 +94,16 @@ def list_tickets(
     tickets = session.exec(
         stmt.order_by(func.substr(Ticket.ticket_no, 2).desc())
     ).all()
-    names = {c.id: c.name for c in session.exec(select(Customer)).all()}
+    customers = {c.id: c for c in session.exec(select(Customer)).all()}
+    open_claims = _open_claim_ticket_ids(session)
     return [
-        _ticket_read(t, names.get(t.customer_id), _payment_fields(session, t))
+        _ticket_read(
+            t,
+            customers[t.customer_id].name if t.customer_id in customers else None,
+            _payment_fields(session, t),
+            customer_city=customers[t.customer_id].city if t.customer_id in customers else None,
+            mr_pending=t.id in open_claims,
+        )
         for t in tickets
     ]
 
@@ -198,23 +205,9 @@ def add_update(
         if ticket_id not in owned_ticket_ids(session, user):
             raise HTTPException(http_status.HTTP_403_FORBIDDEN, "Not your task")
 
-    # Full link to the AMC claim workflow: a ticket cannot be closed while it still
-    # has an unresolved Blue Star material claim (MR Raised / Received / Awaiting Replenish).
-    closing = payload.end_date is not None or payload.stage == LifecycleStage.CLOSED
-    if closing:
-        open_claims = session.exec(
-            select(MaterialClaim)
-            .where(MaterialClaim.ticket_id == ticket_id)
-            .where(MaterialClaim.status.in_(_OPEN_CLAIM_STATUSES))
-        ).all()
-        if open_claims:
-            nos = ", ".join(c.claim_no for c in open_claims)
-            raise HTTPException(
-                400,
-                f"Resolve the pending Blue Star claim(s) first: {nos} "
-                "(must reach Replaced/Defective/Dispatched before closing).",
-            )
-
+    # Note: closing is intentionally NOT blocked by an unresolved Blue Star claim — the field
+    # work can finish before the paperwork. Such tickets surface an "MR Pending" tag instead
+    # (see mr_pending on TicketRead) so the claim isn't forgotten.
     update = TicketUpdate(
         ticket_id=ticket.id,
         stage=payload.stage,
@@ -336,7 +329,20 @@ def _payment_fields(session, ticket: Ticket) -> dict:
     }
 
 
-def _ticket_read(ticket: Ticket, customer_name: str | None = None, payment: dict | None = None) -> TicketRead:
+def _open_claim_ticket_ids(session) -> set[int]:
+    """Ticket ids that still have an unresolved Blue Star claim (drives the MR Pending tag)."""
+    return set(session.exec(
+        select(MaterialClaim.ticket_id).where(MaterialClaim.status.in_(_OPEN_CLAIM_STATUSES))
+    ).all())
+
+
+def _ticket_read(
+    ticket: Ticket,
+    customer_name: str | None = None,
+    payment: dict | None = None,
+    customer_city: str | None = None,
+    mr_pending: bool = False,
+) -> TicketRead:
     """List-row view with the computed 72h assignment-SLA fields."""
     updates = ticket.updates
     payment = payment or {"total_amount": None, "paid_amount": None, "balance": None}
@@ -345,6 +351,8 @@ def _ticket_read(ticket: Ticket, customer_name: str | None = None, payment: dict
         ticket_no=ticket.ticket_no,
         customer_id=ticket.customer_id,
         customer_name=customer_name,
+        customer_city=customer_city,
+        mr_pending=mr_pending,
         complaint_date=ticket.complaint_date,
         work_type=ticket.work_type,
         machine_type=ticket.machine_type,
@@ -375,6 +383,8 @@ def _ticket_detail(session: SessionDep, ticket: Ticket) -> TicketDetail:
         assign_by=assign_by_date(ticket.complaint_date),
         assignment_overdue=assignment_overdue(ticket.complaint_date, updates),
         customer_name=customer.name if customer else None,
+        customer_city=customer.city if customer else None,
+        mr_pending=ticket.id in _open_claim_ticket_ids(session),
         primary_complaint=primary_complaint_of(updates),
         requires_tc=requires_tc(updates),
         updates=[_update_to_read(u) for u in updates],

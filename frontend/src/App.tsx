@@ -58,12 +58,12 @@ function AppRoutes() {
         <Route path="tickets" element={<Tickets />} />
         <Route path="tickets/new" element={<RequireRole allow={isPrivileged}><CreateTicket /></RequireRole>} />
         <Route path="tickets/:id" element={<TicketDetail />} />
-        <Route path="pms" element={<PMSPage />} />
+        <Route path="pms" element={<RequireRole allow={isPrivileged}><PMSPage /></RequireRole>} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="payments" element={<RequireRole allow={isPrivileged}><Payments /></RequireRole>} />
         <Route path="queries" element={<Queries />} />
         <Route path="assistant" element={<Assistant />} />
-        <Route path="materials" element={<Materials />} />
+        <Route path="materials" element={<RequireRole allow={isPrivileged}><Materials /></RequireRole>} />
         <Route path="customers" element={<RequireRole allow={isAdmin}><Customers /></RequireRole>} />
         <Route path="customers/:id" element={<RequireRole allow={isAdmin}><CustomerDetail /></RequireRole>} />
         <Route path="team" element={<RequireRole allow={isAdmin}><Team /></RequireRole>} />

@@ -95,10 +95,14 @@ class TicketRead(SQLModel):
     status: TicketStatus
     reopen: bool
     customer_name: Optional[str] = None
+    customer_city: Optional[str] = None
     # Assignment SLA (72h) helpers, computed from the lifecycle chain.
     is_assigned: bool = False
     assign_by: Optional[date] = None
     assignment_overdue: bool = False
+    # True while the ticket still has an unresolved Blue Star material claim. The work can be
+    # closed regardless; this drives the "MR Pending" tag so the paperwork isn't forgotten.
+    mr_pending: bool = False
     # Repaired Service payment (None for other work types).
     total_amount: Optional[float] = None
     paid_amount: Optional[float] = None

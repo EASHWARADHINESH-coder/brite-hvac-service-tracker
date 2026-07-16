@@ -77,6 +77,7 @@ export interface Ticket {
   ticket_no: string;
   customer_id: number;
   customer_name?: string | null;
+  customer_city?: string | null;
   complaint_date: string;
   work_type: WorkType;
   machine_type?: MachineType | null;
@@ -87,6 +88,8 @@ export interface Ticket {
   is_assigned?: boolean;
   assign_by?: string | null;
   assignment_overdue?: boolean;
+  // True while an unresolved Blue Star claim remains (work may still be closed).
+  mr_pending?: boolean;
   // Repaired Service payment (null for other work types)
   total_amount?: number | null;
   paid_amount?: number | null;

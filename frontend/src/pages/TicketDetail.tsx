@@ -272,6 +272,11 @@ export default function TicketDetail() {
         action={
           <div className="flex items-center gap-2">
             {assignBadge}
+            {ticket.mr_pending && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                MR Pending
+              </span>
+            )}
             {ticket.balance != null && ticket.balance > 0 && (
               <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700">
                 Payment Pending
