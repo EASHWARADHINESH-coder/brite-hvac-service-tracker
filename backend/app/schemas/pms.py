@@ -49,3 +49,11 @@ class PMSVisitRow(SQLModel):
 class GenerateResult(SQLModel):
     created: int
     tickets: list[str] = []  # ticket numbers created
+
+
+class RemoveResult(SQLModel):
+    """Result of removing generated-but-untouched PMS tickets."""
+
+    removed: int
+    tickets: list[str] = []  # ticket numbers removed
+    kept: int = 0            # generated tickets left alone because work had started

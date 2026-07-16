@@ -17,6 +17,7 @@ import {
   getPMSSchedule,
   listCustomers,
   listPMS,
+  removeGeneratedPMS,
 } from "../api/services";
 import type { Customer, PMS, PMSVisitRow } from "../types";
 
@@ -45,6 +46,7 @@ export default function PMSPage() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
 
   const load = () => {
@@ -58,19 +60,47 @@ export default function PMSPage() {
     if (cid) setForm((f) => ({ ...f, customer_id: cid }));
   }, [searchParams]);
 
+  // Tickets are NOT generated automatically — use the "Generate due tickets" button.
   useEffect(() => {
-    // Auto-create tickets for all visits dated on/before today (future stays scheduled),
-    // then load the schedule.
-    autoGeneratePMS()
-      .then((res) => {
-        if (res.created > 0) {
-          setBanner(`Auto-created ${res.created} PMS ticket(s): ${res.tickets.join(", ")}`);
-        }
-      })
-      .catch(() => {})
-      .finally(load);
+    load();
     listCustomers().then(setCustomers);
   }, []);
+
+  const doGenerate = async () => {
+    setBusy(true);
+    setBanner(null);
+    try {
+      const res = await autoGeneratePMS();
+      setBanner(
+        res.created > 0
+          ? `Created ${res.created} PMS ticket(s): ${res.tickets.join(", ")}`
+          : "No due visits to generate.",
+      );
+      load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doRemoveGenerated = async () => {
+    if (!window.confirm(
+      "Remove generated PMS tickets that have no work done?\n\n" +
+      "Tickets with progress are kept. Their visits go back to \"Due\" so you can generate them manually later.",
+    )) return;
+    setBusy(true);
+    setBanner(null);
+    try {
+      const res = await removeGeneratedPMS();
+      setBanner(
+        `Removed ${res.removed} untouched PMS ticket(s)` +
+        (res.kept > 0 ? ` · kept ${res.kept} with work done` : "") +
+        (res.tickets.length ? `: ${res.tickets.join(", ")}` : "."),
+      );
+      load();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const customerName = (id: number) => customers.find((c) => c.id === id)?.name ?? id;
 
@@ -113,9 +143,17 @@ export default function PMSPage() {
       <PageHeader
         title="PMS — Preventive Maintenance"
         action={
-          <Button variant="ghost" onClick={doExport} disabled={exporting}>
-            {exporting ? "Exporting…" : "⬇ Export to Excel"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={doGenerate} disabled={busy}>
+              {busy ? "Working…" : "Generate due tickets"}
+            </Button>
+            <Button variant="ghost" onClick={doRemoveGenerated} disabled={busy}>
+              Remove generated
+            </Button>
+            <Button variant="ghost" onClick={doExport} disabled={exporting}>
+              {exporting ? "Exporting…" : "⬇ Export to Excel"}
+            </Button>
+          </div>
         }
       />
 

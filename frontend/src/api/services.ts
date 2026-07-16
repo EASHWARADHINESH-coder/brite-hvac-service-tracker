@@ -162,8 +162,12 @@ export const createPMS = (payload: {
   auto_generate?: boolean;
 }) => data<PMS>(api.post("/pms", payload));
 export const getPMSSchedule = () => data<PMSVisitRow[]>(api.get("/pms/schedule"));
+// Generate tickets for due visits — manual only (no longer runs automatically on page load).
 export const autoGeneratePMS = () =>
   data<{ created: number; tickets: string[] }>(api.post("/pms/auto-generate", {}));
+// Remove generated PMS tickets that have no work done; visits return to "Due".
+export const removeGeneratedPMS = () =>
+  data<{ removed: number; tickets: string[]; kept: number }>(api.post("/pms/remove-generated", {}));
 
 // ---- Materials Tracker ----
 export const listMaterialsTracker = (ticketId?: number) =>

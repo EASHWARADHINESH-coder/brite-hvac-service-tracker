@@ -20,6 +20,7 @@ from app.schemas.pms import (
     PMSCreate,
     PMSRead,
     PMSVisitRow,
+    RemoveResult,
 )
 from app.services.pms_schedule import generate_visit_dates
 from app.services.ticket_logic import next_ticket_no
@@ -168,6 +169,39 @@ def auto_generate(session: SessionDep):
             session.commit()
             created.append(ticket.ticket_no)
     return GenerateResult(created=len(created), tickets=created)
+
+
+@router.post("/remove-generated", response_model=RemoveResult, dependencies=[Depends(require_engineer)])
+def remove_generated(session: SessionDep):
+    """Delete generated PMS tickets that have no work done (only their Logged row).
+
+    Tickets with real progress (assigned / material pending / closed …) are kept untouched.
+    Removing a ticket also drops its visit link, so the visit shows as "Due" again and can be
+    generated manually when it's actually needed.
+    """
+    removed: list[str] = []
+    kept = 0
+    for link in session.exec(select(PMSVisitTicket)).all():
+        ticket = session.get(Ticket, link.ticket_id)
+        if ticket is None:
+            session.delete(link)  # orphaned link
+            continue
+        untouched = (
+            ticket.status == TicketStatus.OPEN
+            and len(ticket.updates) <= 1
+            and all(u.stage == LifecycleStage.LOGGED for u in ticket.updates)
+        )
+        if not untouched:
+            kept += 1
+            continue
+        ticket_no = ticket.ticket_no
+        for u in list(ticket.updates):
+            session.delete(u)
+        session.delete(link)
+        session.delete(ticket)
+        removed.append(ticket_no)
+    session.commit()
+    return RemoveResult(removed=len(removed), tickets=removed, kept=kept)
 
 
 @router.get("/{pms_id}", response_model=PMSRead)
