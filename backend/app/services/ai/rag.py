@@ -80,23 +80,40 @@ def _upsert_document(session: Session, kind: str, ref_id: int, text: str) -> str
 
 
 def index_all(session: Session) -> dict:
-    """(Re)index every ticket and customer. Incremental via content hash."""
+    """(Re)index every ticket and customer, and prune deleted ones.
+
+    Incremental via content hash. Documents whose source row no longer exists (e.g. a
+    removed PMS ticket) are dropped along with their vectors, so search never surfaces
+    records that aren't there any more.
+    """
     vectorstore.ensure_table()
     indexed = skipped = failed = 0
+    live: set[tuple[str, int]] = set()
 
     for t in session.exec(select(Ticket)).all():
+        live.add(("ticket", t.id))
         r = _upsert_document(session, "ticket", t.id, _ticket_text(session, t))
         indexed += r == "indexed"
         skipped += r == "skipped"
         failed += r == "failed"
 
     for c in session.exec(select(Customer)).all():
+        live.add(("customer", c.id))
         r = _upsert_document(session, "customer", c.id, _customer_text(c))
         indexed += r == "indexed"
         skipped += r == "skipped"
         failed += r == "failed"
 
-    return {"indexed": indexed, "skipped": skipped, "failed": failed}
+    pruned = 0
+    for doc in session.exec(select(AIDocument)).all():
+        if (doc.kind, doc.ref_id) not in live:
+            vectorstore.delete(doc.id)
+            session.delete(doc)
+            pruned += 1
+    if pruned:
+        session.commit()
+
+    return {"indexed": indexed, "skipped": skipped, "failed": failed, "pruned": pruned}
 
 
 def retrieve(session: Session, query: str, k: int = 5, kind: str | None = None) -> list[Retrieved]:

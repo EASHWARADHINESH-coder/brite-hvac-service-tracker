@@ -55,7 +55,10 @@ def _run_reindex(job_id: int) -> None:
     try:
         with Session(engine) as s:
             stats = rag.index_all(s)
-        detail = f"indexed {stats['indexed']}, skipped {stats['skipped']}, failed {stats['failed']}"
+        detail = (
+            f"indexed {stats['indexed']}, skipped {stats['skipped']}, "
+            f"failed {stats['failed']}, pruned {stats['pruned']}"
+        )
         _set(job_id, status="done", detail=detail, finished_at=datetime.utcnow())
     except Exception as exc:  # noqa: BLE001
         logger.exception("reindex job failed")

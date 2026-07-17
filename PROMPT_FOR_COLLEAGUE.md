@@ -6,9 +6,13 @@ You'll receive one file separately (privately — it contains real customer data
 service_tracker_prod.db
 ```
 
-It's the **complete** database snapshot of the Service Tracker (179 customers, 48 tickets,
-10 user accounts, PMS, materials, and the AI search index). Loading it replaces the empty
+It's the **complete** database snapshot of the Service Tracker (179 customers, 30 tickets,
+10 user accounts, PMS, materials/claims, and the AI search index). Loading it replaces the
 production database so the live app at **https://briteai.in/service** is fully populated.
+
+> **Also `git pull` + rebuild first.** The snapshot is *data only*. New features (city column,
+> MR Pending tag, manual PMS generate, customer merge, multi-spares, MR history, mobile view)
+> ship as **code** — so pull the latest `main` and rebuild the containers, then load this file.
 
 Upload `service_tracker_prod.db` into the deployment folder on the server
 (e.g. `/opt/brite-hvac-service-tracker/`), then either **paste the prompt below into Claude Code**
@@ -33,7 +37,7 @@ run from that folder, or follow the manual steps in [`LOAD_DATA_TO_PROD.md`](LOA
 > 4. **Swap:** stop the API container → `docker cp service_tracker_prod.db <container>:/data/prod.db`
 >    → delete any stale `/data/prod.db-wal` and `/data/prod.db-shm` files → start the API container.
 > 5. **Verify:** `curl -s https://briteai.in/service/api/v1/health` should return `{"status":"ok"}`,
->    and the data should now be present (the file has **179 customers, 48 tickets, 227 index
+>    and the data should now be present (the file has **179 customers, 30 tickets, 209 index
 >    vectors**). If the repo has `verify_prod.py`, run it with the admin password to confirm counts.
 > 6. **Remind me to change the admin password** — the file includes login accounts, including a
 >    default `admin` that must be secured on a public site.

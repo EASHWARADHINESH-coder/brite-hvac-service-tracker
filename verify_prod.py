@@ -12,8 +12,8 @@ Options:
     python verify_prod.py --base https://briteai.in/service/api/v1 --user admin --pass ...
 
 Exit code 0 = all checks passed, 1 = something is short (re-check the swap).
-Note: EXPECTED reflects the snapshot loaded on 2026-07 (179 customers / 48 tickets / 227 RAG
-docs). If you refresh prod with newer local data, update these numbers.
+Note: EXPECTED reflects the current snapshot (179 customers / 30 tickets / 209 RAG docs).
+If you refresh prod with newer local data, update these numbers.
 """
 
 import argparse
@@ -26,10 +26,10 @@ import urllib.request
 DEFAULT_BASE = "https://briteai.in/service/api/v1"
 EXPECTED = {
     "customers": 179,
-    "tickets": 48,
+    "tickets": 30,
     "breakdown_tickets": 24,
-    "pms_tickets": 23,
-    "rag_documents": 227,
+    "pms_tickets": 5,
+    "rag_documents": 209,
 }
 
 
