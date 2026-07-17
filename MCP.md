@@ -61,6 +61,29 @@ cd backend
 It speaks JSON-RPC over stdio, so there's nothing to "open" — a client drives it. The repo's
 verification spawns it and calls tools over the protocol.
 
+## Remote (HTTP) — connect over the network / from the deployed site
+The same tools are also served over **streamable HTTP** at **`/mcp`** (behind the outer proxy:
+`https://briteai.in/service/mcp`), so remote MCP clients can reach the CRM by URL. It's mounted
+only when enabled and is **token-guarded** (`Authorization: Bearer <MCP_TOKEN>`).
+
+Enable it (server `backend/.env.prod`, or local `backend/.env`):
+```
+MCP_HTTP_ENABLED=true
+MCP_TOKEN=<a long random secret>     # openssl rand -hex 32
+```
+Claude Desktop config (remote):
+```json
+{
+  "mcpServers": {
+    "service-tracker-remote": {
+      "url": "https://briteai.in/service/mcp",
+      "headers": { "Authorization": "Bearer <your MCP_TOKEN>" }
+    }
+  }
+}
+```
+Unauthenticated requests get `401`. nginx already proxies `/mcp` (streaming, buffering off).
+
 ## Notes
 - **Read-only** by design. Guarded write tools (create ticket, allocate material) can be added
   later mirroring the app's propose→confirm pattern.

@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # If True, fall over to Groq (cloud) after every local model fails. Default off = local-only.
     ai_cloud_failover: bool = False
 
+    # Remote MCP server over HTTP (Phase 7). Exposes the read-only CRM tools at /mcp for
+    # MCP clients (Claude Desktop, the web app). Only mounted when a token is set — the
+    # endpoint requires Authorization: Bearer <MCP_TOKEN>.
+    mcp_http_enabled: bool = False
+    mcp_token: str = ""
+
     @property
     def ollama_model_chain(self) -> list[str]:
         """Primary model followed by the configured fallbacks (deduped, order preserved)."""

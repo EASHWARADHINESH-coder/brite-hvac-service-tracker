@@ -1,4 +1,4 @@
-"""MCP server (stdio) exposing the Service Tracker's read-only operations as tools.
+"""MCP server exposing the Service Tracker's read-only operations as tools.
 
 FastMCP over the service layer: each tool opens a DB session and calls the app's existing
 services/handlers directly (in-process, no HTTP), acting as a privileged Service Admin
@@ -6,7 +6,10 @@ identity so all org data is visible. Every tool is READ-ONLY — nothing here mu
 The semantic tools (search_tickets, find_similar_tickets) use the RAG layer and return empty
 if the AI layer / Ollama is off.
 
-Run (from backend/, with the venv):  python -m app.mcp_server
+Two transports share the same tools:
+  * stdio  — `python -m app.mcp_server` (local clients like Claude Desktop on this machine)
+  * HTTP   — `http_app()` is mounted by main.py at /mcp (remote clients, the deployed website),
+             behind a bearer-token guard. Enable with MCP_HTTP_ENABLED + MCP_TOKEN.
 """
 
 from sqlmodel import Session, select
@@ -30,7 +33,10 @@ try:
 except ImportError as exc:  # pragma: no cover
     raise SystemExit("The 'mcp' package is required — run: pip install -r requirements.txt") from exc
 
-mcp = FastMCP("service-tracker")
+# stateless_http: each HTTP request is independent (no server-side session state to keep) —
+# simplest and most robust for tool calls behind a reverse proxy. Path "/" so the app can be
+# mounted at /mcp by the FastAPI parent.
+mcp = FastMCP("service-tracker", stateless_http=True, streamable_http_path="/")
 
 
 def _admin() -> User:
@@ -113,6 +119,14 @@ def find_similar_tickets(ticket: str, limit: int = 5) -> list[dict]:
             return []
         return [{"ticket_no": r.label, "match": round(r.distance, 3), "summary": r.text}
                 for r in rag.similar_tickets(s, t.id, k=limit)]
+
+
+def http_app():
+    """ASGI app for the streamable-HTTP transport (mounted at /mcp by main.py).
+
+    Creates the session manager lazily; main.py runs it via mcp.session_manager.run().
+    """
+    return mcp.streamable_http_app()
 
 
 def main() -> None:
