@@ -104,7 +104,17 @@ When you have a domain:
 
 Ping me when you're ready and I'll add the HTTPS config.
 
-## Later: Step 6 — turn on the AI layer
-Set `AI_ENABLED=true` in `backend/.env.prod` and either add a free `GROQ_API_KEY`
-(`AI_PROVIDER=groq`) or run Ollama on a larger VPS (`AI_PROVIDER=ollama`), then
-`docker compose -f docker-compose.prod.yml up -d`.
+## Turn on the AI layer (semantic search / RAG)
+The compose file already includes an `ollama` service and pulls the embedding model on first
+boot, so RAG works with no host setup. To enable it:
+1. In `backend/.env.prod` set `AI_ENABLED=true`. For the assistant's wording, either set
+   `AI_PROVIDER=groq` + a free `GROQ_API_KEY` (recommended — no server RAM), or keep it local.
+2. `docker compose -f docker-compose.prod.yml up -d --build` — the `ollama-pull` step downloads
+   `nomic-embed-text` (~274 MB) once. Watch it with `docker compose -f docker-compose.prod.yml logs -f ollama-pull`.
+3. Build the index: `POST https://briteai.in/service/api/v1/ai/reindex` (as Admin/Engineer), or —
+   if you loaded the DB snapshot — it already ships with the vectors, so a reindex just refreshes.
+
+Notes: embeddings always come from Ollama (local, free); `OLLAMA_BASE_URL` is set to
+`http://ollama:11434` by the compose file — don't point it at `127.0.0.1`. The embedder needs
+~1 GB RAM; a local *chat* model (llama3.2:3b etc.) needs ~2 GB+ on top, which is why Groq is the
+easy choice for the assistant on a small VPS.

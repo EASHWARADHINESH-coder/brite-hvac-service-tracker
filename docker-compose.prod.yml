@@ -1,5 +1,11 @@
-# Production stack for a single VPS: FastAPI (api) + nginx-served React (web), SQLite on a volume.
+# Production stack for a single VPS:
+#   web    — nginx serving the React build + reverse-proxying /api
+#   api    — FastAPI on SQLite (volume)
+#   ollama — local embeddings/LLM server, reachable in-cluster at http://ollama:11434
+#   ollama-pull — one-shot: pulls the embedding model on first boot, then exits
+#
 # Usage:  docker compose -f docker-compose.prod.yml up -d --build
+# RAG needs AI_ENABLED=true in backend/.env.prod (see notes at the bottom).
 services:
   api:
     build: ./backend
@@ -8,10 +14,15 @@ services:
     environment:
       # SQLite file on the mounted volume (four slashes = absolute /data/prod.db).
       DATABASE_URL: sqlite:////data/prod.db
+      # Reach Ollama by its compose service name — NOT 127.0.0.1 (that's the api container).
+      OLLAMA_BASE_URL: http://ollama:11434
     volumes:
       - st_data:/data
     expose:
       - "8000"
+    depends_on:
+      ollama:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
@@ -23,5 +34,32 @@ services:
       - "80:80"      # public entry point; add 443 + TLS when a domain is attached
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: st_ollama
+    volumes:
+      - ollama_models:/root/.ollama   # persists pulled models across restarts
+    # No host port needed — only the api container talks to it, over the compose network.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # Pulls the embedding model once (idempotent — skips if already present), then exits.
+  # Add a chat model here too (e.g. `ollama pull llama3.2:3b`) if you want a local assistant;
+  # otherwise use Groq for the chat model and keep this to the embedder only.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull nomic-embed-text"]
+    restart: "no"
+
 volumes:
-  st_data:            # persists the SQLite database across restarts/redeploys
+  st_data:         # SQLite database
+  ollama_models:   # downloaded Ollama models
