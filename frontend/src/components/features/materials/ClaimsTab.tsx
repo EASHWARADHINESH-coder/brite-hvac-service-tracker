@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { Button, Card, Field, Input, Modal, Select, Table } from "../../ui/primitives";
@@ -38,6 +38,74 @@ const STATUS_STYLES: Record<ClaimStatus, string> = {
   "Defective in Office": "bg-orange-100 text-orange-800",
   "Dispatched to BSL": "bg-emerald-100 text-emerald-800",
 };
+
+type Milestone = { label: string; date?: string | null; doc?: string | null; note?: string };
+
+/**
+ * MR history: the claim's milestones derived from its recorded fields. The middle two steps
+ * differ by path — in-stock means the part was used first and BSL replenishes it afterwards;
+ * otherwise BSL sends the part first and it's fitted at site.
+ */
+function milestonesOf(c: MaterialClaim): Milestone[] {
+  const mid: Milestone[] = c.in_stock
+    ? [
+        { label: "Used from stock at site", date: c.used_date },
+        { label: "Replenished by BSL", date: c.delivery_challan_date,
+          doc: c.delivery_challan_no ? `DC ${c.delivery_challan_no}` : null },
+      ]
+    : [
+        { label: "Material received from BSL", date: c.delivery_challan_date,
+          doc: c.delivery_challan_no ? `DC ${c.delivery_challan_no}` : null },
+        { label: "Replacement fitted at site", date: c.used_date },
+      ];
+  return [
+    { label: "MR raised to BSL", date: c.mr_date, doc: c.mr_no ? `SAP MR ${c.mr_no}` : null },
+    ...mid,
+    { label: "Defective returned to office", date: c.defective_returned_date },
+    { label: "Dispatched to BSL", date: c.pod_date, doc: c.pod_no ? `POD ${c.pod_no}` : null },
+  ];
+}
+
+function ClaimHistory({ claim }: { claim: MaterialClaim }) {
+  const steps = milestonesOf(claim);
+  return (
+    <div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        MR history — {claim.claim_no} · {claim.material_name} ×{claim.qty} {claim.uom} ·{" "}
+        {claim.in_stock ? "used from stock, replenish later" : "procure from BSL, then fit"}
+      </div>
+      <ol className="relative border-l border-slate-200 pl-5">
+        {steps.map((s, i) => {
+          const done = !!s.date;
+          return (
+            <li key={i} className="mb-3 last:mb-0">
+              <span
+                className={`absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full ${
+                  done ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`text-sm ${done ? "font-medium text-slate-800" : "text-slate-400"}`}>
+                  {s.label}
+                </span>
+                {s.date && <span className="text-xs text-slate-500">{s.date}</span>}
+                {s.doc && (
+                  <span className="rounded bg-slate-200 px-1.5 py-0.5 font-mono text-[10px] text-slate-700">
+                    {s.doc}
+                  </span>
+                )}
+                {!done && <span className="text-[10px] uppercase text-slate-400">pending</span>}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      {claim.remarks && (
+        <p className="mt-2 text-xs text-slate-500">Remarks: {claim.remarks}</p>
+      )}
+    </div>
+  );
+}
 
 function ClaimBadge({ status }: { status: ClaimStatus }) {
   return (
@@ -113,7 +181,10 @@ export default function ClaimsTab() {
   const [fEnd, setFEnd] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [fTicket, setFTicket] = useState("");
+  const [fSearch, setFSearch] = useState("");
   const [exporting, setExporting] = useState(false);
+  // MR history: which claim's milestone timeline is expanded.
+  const [openHistory, setOpenHistory] = useState<number | null>(null);
 
   // Deep-link from a ticket: ?ticket=<no>&claim=<no> filters + highlights a claim.
   const [searchParams] = useSearchParams();
@@ -156,13 +227,23 @@ export default function ClaimsTab() {
     id ? users.find((u) => u.id === id)?.full_name ?? users.find((u) => u.id === id)?.username ?? "—" : "—";
   const techName = (id?: number | null) => (id ? team.find((t) => t.id === id)?.name ?? "—" : "—");
 
-  // Client-side filtering for the displayed claims list.
+  const customerOf = (ticketId: number) =>
+    tickets.find((t) => t.id === ticketId)?.customer_name ?? "";
+
+  // Client-side filtering for the displayed claims list (MR history search).
   const filteredClaims = claims.filter((c) => {
     if (fStart && c.mr_date < fStart) return false;
     if (fEnd && c.mr_date > fEnd) return false;
     if (fStatus && c.status !== fStatus) return false;
     if (fTicket && !String(ticketNo(c.ticket_id)).toLowerCase().includes(fTicket.toLowerCase()))
       return false;
+    if (fSearch) {
+      const q = fSearch.toLowerCase();
+      const hay = [c.claim_no, c.material_name, c.mr_no ?? "", customerOf(c.ticket_id)]
+        .join(" ")
+        .toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     return true;
   });
 
@@ -294,6 +375,8 @@ export default function ClaimsTab() {
 
       {/* Filters + export */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="w-56"><Input placeholder="Search material / claim / MR / customer…"
+          value={fSearch} onChange={(e) => setFSearch(e.target.value)} /></div>
         <div className="w-40"><Input placeholder="Ticket no…" value={fTicket}
           onChange={(e) => setFTicket(e.target.value)} /></div>
         <div className="w-48">
@@ -314,39 +397,58 @@ export default function ClaimsTab() {
       </div>
 
       {/* Claims list */}
-      <Table head={["Claim No", "Ticket", "Material", "Qty", "Path", "Status", "Engineer / Tech", "Action"]}>
+      <Table head={["Claim No", "Ticket", "Customer", "Material", "Qty", "Path", "Status", "Engineer / Tech", "Action"]}>
         {filteredClaims.map((c) => {
           const a = nextAction(c);
           const isHl = highlight === c.claim_no;
+          const isOpen = openHistory === c.id;
           return (
-            <tr
-              key={c.id}
-              ref={isHl ? highlightRef : undefined}
-              className={isHl ? "bg-amber-50 ring-2 ring-amber-300" : undefined}
-            >
-              <td className="px-4 py-2 font-mono font-medium">{c.claim_no}</td>
-              <td className="px-4 py-2 font-mono">{ticketNo(c.ticket_id)}</td>
-              <td className="px-4 py-2">{c.material_name}</td>
-              <td className="px-4 py-2">{c.qty} {c.uom}</td>
-              <td className="px-4 py-2 text-xs text-slate-500">{c.in_stock ? "In stock" : "Procure"}</td>
-              <td className="px-4 py-2"><ClaimBadge status={c.status} /></td>
-              <td className="px-4 py-2 text-xs text-slate-500">
-                {engName(c.engineer_user_id)} / {techName(c.technician_id)}
-              </td>
-              <td className="px-4 py-2">
-                {a ? (
-                  <button onClick={() => openAction(c)} className="text-xs font-medium text-slate-700 hover:underline">
-                    {a.label} →
+            <Fragment key={c.id}>
+              <tr
+                ref={isHl ? highlightRef : undefined}
+                className={isHl ? "bg-amber-50 ring-2 ring-amber-300" : undefined}
+              >
+                <td className="px-4 py-2 font-mono font-medium">
+                  {c.claim_no}
+                  <button
+                    onClick={() => setOpenHistory(isOpen ? null : c.id)}
+                    className="ml-2 text-[10px] font-medium text-sky-600 hover:underline"
+                    title="Show the MR milestone history"
+                  >
+                    {isOpen ? "Hide" : "History"}
                   </button>
-                ) : (
-                  <span className="text-xs text-emerald-600">Closed</span>
-                )}
-              </td>
-            </tr>
+                </td>
+                <td className="px-4 py-2 font-mono">{ticketNo(c.ticket_id)}</td>
+                <td className="px-4 py-2 text-slate-600">{customerOf(c.ticket_id) || "—"}</td>
+                <td className="px-4 py-2">{c.material_name}</td>
+                <td className="px-4 py-2">{c.qty} {c.uom}</td>
+                <td className="px-4 py-2 text-xs text-slate-500">{c.in_stock ? "In stock" : "Procure"}</td>
+                <td className="px-4 py-2"><ClaimBadge status={c.status} /></td>
+                <td className="px-4 py-2 text-xs text-slate-500">
+                  {engName(c.engineer_user_id)} / {techName(c.technician_id)}
+                </td>
+                <td className="px-4 py-2">
+                  {a ? (
+                    <button onClick={() => openAction(c)} className="text-xs font-medium text-slate-700 hover:underline">
+                      {a.label} →
+                    </button>
+                  ) : (
+                    <span className="text-xs text-emerald-600">Closed</span>
+                  )}
+                </td>
+              </tr>
+              {isOpen && (
+                <tr className="bg-slate-50">
+                  <td colSpan={9} className="px-6 py-4">
+                    <ClaimHistory claim={c} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           );
         })}
         {filteredClaims.length === 0 && (
-          <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-400">No claims match</td></tr>
+          <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-400">No claims match</td></tr>
         )}
       </Table>
 
