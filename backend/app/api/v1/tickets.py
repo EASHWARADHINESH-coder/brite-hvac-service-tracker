@@ -5,6 +5,8 @@ and seeds the first lifecycle row (Logged). Appending updates recomputes the tic
 for reopens, keeps the same ticket number (new lifecycle chain) per the locked decision.
 """
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 from sqlmodel import func, select
 
@@ -22,6 +24,7 @@ from app.schemas.tickets import (
     TicketRead,
     TicketUpdateCreate,
     TicketUpdateRead,
+    WorkStartedCreate,
 )
 from app.services.material_claim import compute_claim_status, next_claim_no
 from app.services.permissions import can_view_ticket, is_privileged, owned_ticket_ids
@@ -294,6 +297,96 @@ def raise_material_pending(
         remarks=payload.remarks,
         status=TicketStatus.OPEN,
     ))
+
+    session.commit()
+    session.refresh(ticket)
+    ticket.status = compute_ticket_status(ticket.updates)
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+    return _ticket_detail(session, ticket)
+
+
+@router.post("/{ticket_id}/work-started", response_model=TicketDetail, status_code=201)
+def record_work_started(
+    ticket_id: int, payload: WorkStartedCreate, session: SessionDep, user: CurrentUser
+):
+    """Record Work Started with any number of spares, in one transaction.
+
+    Every BSL spare raises its own Blue Star claim (and is saved to the materials catalog for
+    future MRs); non-BSL spares are recorded on the lifecycle row. Exactly one lifecycle row is
+    written: Material Pending when any claim was raised, otherwise Work Started. `close_now`
+    closes the ticket in the same call, and is ignored when a claim is pending.
+    """
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    if not is_privileged(user):
+        if user.role != UserRole.TECHNICIAN:
+            raise HTTPException(http_status.HTTP_403_FORBIDDEN, "View-only role")
+        if ticket_id not in owned_ticket_ids(session, user):
+            raise HTTPException(http_status.HTTP_403_FORBIDDEN, "Not your task")
+
+    action_date = payload.action_date or date.today()
+    for s in payload.spares:
+        if not s.material_name.strip():
+            raise HTTPException(400, "Every spare needs a material name")
+    bsl = [s for s in payload.spares if s.source == "bsl"]
+    non_bsl = [s for s in payload.spares if s.source != "bsl"]
+    for s in bsl:
+        if s.technician_id and not session.get(TeamMember, s.technician_id):
+            raise HTTPException(404, "Technician not found")
+
+    notes: list[str] = []
+
+    for s in bsl:
+        name = s.material_name.strip()
+        known = session.exec(
+            select(MaterialItem).where(func.lower(MaterialItem.name) == name.lower())
+        ).first()
+        if not known:
+            session.add(MaterialItem(name=name, uom=s.uom or "Nos"))
+        claim = MaterialClaim(
+            claim_no=next_claim_no(session, action_date),
+            ticket_id=ticket_id,
+            customer_id=ticket.customer_id,
+            material_name=name,
+            uom=s.uom or "Nos",
+            qty=s.qty,
+            in_stock=s.in_stock,
+            technician_id=s.technician_id,
+            mr_no=s.mr_no,
+            mr_date=action_date,
+        )
+        claim.status = compute_claim_status(claim)
+        session.add(claim)
+        session.flush()  # so the next claim number accounts for this one
+        mr_txt = f" (SAP MR {s.mr_no})" if s.mr_no else ""
+        notes.append(f"BSL MR Pending - {name} x{s.qty:g}{mr_txt} - claim {claim.claim_no}")
+
+    for s in non_bsl:
+        vendor = f" ({s.vendor.strip()})" if s.vendor and s.vendor.strip() else ""
+        notes.append(f"Vendor/Supplier{vendor} - {s.material_name.strip()} x{s.qty:g}")
+
+    session.add(TicketUpdate(
+        ticket_id=ticket_id,
+        stage=LifecycleStage.MATERIAL_PENDING if bsl else LifecycleStage.WORK_STARTED,
+        action_date=action_date,
+        materials=" | ".join(notes) if notes else "None",
+        remarks=payload.remarks,
+        status=TicketStatus.OPEN,
+    ))
+
+    if payload.close_now and not bsl:
+        end = payload.end_date or action_date
+        session.add(TicketUpdate(
+            ticket_id=ticket_id,
+            stage=LifecycleStage.CLOSED,
+            action_date=end,
+            end_date=end,
+            remarks=payload.remarks,
+            status=TicketStatus.CLOSED,
+        ))
 
     session.commit()
     session.refresh(ticket)

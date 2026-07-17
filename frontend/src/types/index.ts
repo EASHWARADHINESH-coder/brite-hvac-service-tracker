@@ -465,3 +465,15 @@ export interface CustomerMergeResult {
   pms_moved: number;
   claims_moved: number;
 }
+
+// One spare row recorded at Work Started (BSL raises a claim; non-BSL is vendor-supplied).
+export interface SpareItem {
+  source: "bsl" | "non_bsl";
+  material_name: string;
+  uom: string;
+  qty: number;
+  in_stock?: boolean;
+  mr_no?: string | null;
+  technician_id?: number | null;
+  vendor?: string | null;
+}

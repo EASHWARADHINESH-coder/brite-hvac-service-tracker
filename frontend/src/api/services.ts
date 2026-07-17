@@ -29,6 +29,7 @@ import type {
   PMSVisitRow,
   Query,
   RankedTicket,
+  SpareItem,
   Skill,
   StockRow,
   Task,
@@ -131,6 +132,17 @@ export const createMaterialPending = (
     action_date?: string | null; remarks?: string | null;
   },
 ) => data<TicketDetail>(api.post(`/tickets/${ticketId}/material-pending`, payload));
+// Work Started with any number of spares — each BSL spare raises its own claim.
+export const recordWorkStarted = (
+  ticketId: number,
+  payload: {
+    action_date?: string | null;
+    remarks?: string | null;
+    spares: SpareItem[];
+    close_now?: boolean;
+    end_date?: string | null;
+  },
+) => data<TicketDetail>(api.post(`/tickets/${ticketId}/work-started`, payload));
 
 // ---- Ticket report PDFs ----
 export const listTicketReports = (ticketId: number) =>

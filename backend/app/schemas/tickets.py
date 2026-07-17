@@ -62,6 +62,31 @@ class MaterialPendingCreate(SQLModel):
     remarks: Optional[str] = None
 
 
+class SpareItem(SQLModel):
+    """One spare recorded at Work Started — a Blue Star claim, or vendor/supplier arranged."""
+
+    source: str = "bsl"                  # "bsl" | "non_bsl"
+    material_name: str
+    uom: str = "Nos"
+    qty: float = 1
+    # BSL only
+    in_stock: bool = False
+    mr_no: Optional[str] = None          # SAP MR Number
+    technician_id: Optional[int] = None
+    # Non-BSL only
+    vendor: Optional[str] = None
+
+
+class WorkStartedCreate(SQLModel):
+    """Work Started with any number of spares. Each BSL spare raises its own claim."""
+
+    action_date: Optional[date] = None
+    remarks: Optional[str] = None
+    spares: list[SpareItem] = []
+    close_now: bool = False              # ignored when a BSL claim is raised
+    end_date: Optional[date] = None
+
+
 class TeamMemberBrief(SQLModel):
     id: int
     name: str

@@ -14,7 +14,7 @@ import {
 } from "../components/ui/primitives";
 import {
   addTicketUpdate,
-  createMaterialPending,
+  recordWorkStarted,
   deleteTicketReport,
   downloadTicketReport,
   getTicket,
@@ -36,8 +36,29 @@ import type {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-// Branch chosen when work begins (Work Started).
-type Branch = "none" | "non_bsl" | "bsl";
+// One spare row in the Work Started step. Several can be added at once; each is either a
+// Blue Star claim (raises its own MR) or vendor/supplier arranged.
+type SpareRow = {
+  source: "bsl" | "non_bsl";
+  material_name: string;
+  uom: string;
+  qty: number;
+  in_stock: boolean;
+  mr_no: string;
+  technician_id: string;
+  vendor: string;
+};
+
+const newSpare = (source: SpareRow["source"] = "bsl"): SpareRow => ({
+  source,
+  material_name: "",
+  uom: "Nos",
+  qty: 1,
+  in_stock: false,
+  mr_no: "",
+  technician_id: "",
+  vendor: "",
+});
 
 const EMPTY = {
   action_date: today(),
@@ -46,17 +67,9 @@ const EMPTY = {
   complaints: "",
   materials: "",
   remarks: "",
-  branch: "none" as Branch,
+  spares: [] as SpareRow[],
   closeNow: false,
   end_date: today(),
-  vendor: "",  // non-Blue-Star (Vendor/Supplier) branch
-  // Blue Star claim (bsl branch)
-  claim_material: "",
-  claim_uom: "Nos",
-  claim_qty: 1,
-  claim_in_stock: false,
-  claim_mr_no: "",
-  claim_tech: "",
   // reopen
   reopen_reason: "",
 };
@@ -109,6 +122,11 @@ export default function TicketDetail() {
   const latestStage = latest?.stage ?? "Logged";
   const isClosed = ticket.status === "Closed";
   const isAssigned = !!ticket.is_assigned;
+
+  // Any Blue Star spare means a claim is raised, so the ticket goes to Material Pending
+  // (and can't be closed in the same action).
+  const bslCount = f.spares.filter((s) => s.source === "bsl").length;
+  const hasBsl = bslCount > 0;
 
   // Absolute URL to the phone-first view (respects the app's deployed base path).
   const mobileUrl =
@@ -165,46 +183,31 @@ export default function TicketDetail() {
 
   const submitWorkStarted = (e: FormEvent) => {
     e.preventDefault();
-    if (f.branch === "bsl") {
-      if (!f.claim_material.trim()) { setError("Enter the Blue Star material"); return; }
-      // One atomic call: creates the claim, saves a new material to the catalog,
-      // and moves the ticket to Material Pending.
-      wrap(() =>
-        createMaterialPending(ticketId, {
-          material_name: f.claim_material.trim(),
-          uom: f.claim_uom,
-          qty: Number(f.claim_qty),
-          in_stock: f.claim_in_stock,
-          mr_no: f.claim_mr_no || null,  // SAP MR Number
-          technician_id: f.claim_tech ? Number(f.claim_tech) : null,
-          action_date: f.action_date || null,
-          remarks: f.remarks || null,
-        }).then(() => undefined),
-      );
+    if (f.spares.some((s) => !s.material_name.trim())) {
+      setError("Every spare needs a material name (or remove the empty row)");
       return;
     }
-    // Source tag recorded in the materials line (None / Vendor-Supplier).
-    const materialsNote =
-      f.branch === "non_bsl"
-        ? `Vendor/Supplier${f.vendor.trim() ? ` (${f.vendor.trim()})` : ""}`
-          + `${f.materials.trim() ? ` — ${f.materials.trim()}` : ""}`
-        : "None";
-    wrap(async () => {
-      await addTicketUpdate(ticketId, {
-        stage: "Work Started",
+    // One atomic call: raises a Blue Star claim per BSL spare (saving new materials to the
+    // catalog), records non-BSL spares on the lifecycle row, and writes a single stage row.
+    wrap(() =>
+      recordWorkStarted(ticketId, {
         action_date: f.action_date || null,
-        materials: materialsNote,
         remarks: f.remarks || null,
-      });
-      if (f.closeNow) {
-        await addTicketUpdate(ticketId, {
-          stage: "Closed",
-          action_date: f.end_date || today(),
-          end_date: f.end_date || today(),
-          remarks: f.remarks || null,
-        });
-      }
-    });
+        close_now: f.closeNow,
+        end_date: f.end_date || null,
+        spares: f.spares.map((s) => ({
+          source: s.source,
+          material_name: s.material_name.trim(),
+          uom: s.uom || "Nos",
+          qty: Number(s.qty) || 1,
+          in_stock: s.source === "bsl" ? s.in_stock : false,
+          mr_no: s.source === "bsl" ? (s.mr_no || null) : null,
+          technician_id:
+            s.source === "bsl" && s.technician_id ? Number(s.technician_id) : null,
+          vendor: s.source === "non_bsl" ? (s.vendor || null) : null,
+        })),
+      }).then(() => undefined),
+    );
   };
 
   const submitTC = (e: FormEvent) => {
@@ -481,86 +484,116 @@ export default function TicketDetail() {
                   <Input type="date" value={f.action_date}
                     onChange={(e) => setF({ ...f, action_date: e.target.value })} />
                 </Field>
-                <Field label="Branch">
-                  <Select value={f.branch}
-                    onChange={(e) => setF({ ...f, branch: e.target.value as Branch })}>
-                    <option value="none">1 · No materials needed → None</option>
-                    <option value="non_bsl">2 · Non-Blue-Star arranged → Vendor/Supplier</option>
-                    <option value="bsl">3 · Blue Star Claim → BSL MR Pending</option>
-                  </Select>
-                </Field>
-
-                {f.branch === "non_bsl" && (
-                  <>
-                    <Field label="Vendor / Supplier (optional)">
-                      <Input value={f.vendor} placeholder="Vendor or supplier name"
-                        onChange={(e) => setF({ ...f, vendor: e.target.value })} />
-                    </Field>
-                    <Field label="Materials used">
-                      <Input value={f.materials}
-                        onChange={(e) => setF({ ...f, materials: e.target.value })} />
-                    </Field>
-                  </>
-                )}
-
-                {f.branch === "bsl" && (
-                  <div className="space-y-3 rounded-md bg-slate-50 p-3">
-                    <Field label="Material (Blue Star) — pick or type">
-                      <Input
-                        list="bsl-materials"
-                        value={f.claim_material}
-                        placeholder="Select or type a material…"
-                        onChange={(e) => {
-                          const m = materials.find((x) => x.name === e.target.value);
-                          setF({ ...f, claim_material: e.target.value, claim_uom: m?.uom ?? f.claim_uom });
-                        }}
-                      />
-                      <datalist id="bsl-materials">
-                        {materials.map((m) => <option key={m.id} value={m.name} />)}
-                      </datalist>
-                    </Field>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Field label="Qty">
-                        <Input type="number" min={0} value={f.claim_qty}
-                          onChange={(e) => setF({ ...f, claim_qty: Number(e.target.value) })} />
-                      </Field>
-                      <Field label="UoM">
-                        <Input value={f.claim_uom}
-                          onChange={(e) => setF({ ...f, claim_uom: e.target.value })} />
-                      </Field>
-                    </div>
-                    <Field label="SAP MR Number">
-                      <Input value={f.claim_mr_no} placeholder="SAP Material Request no."
-                        onChange={(e) => setF({ ...f, claim_mr_no: e.target.value })} />
-                    </Field>
-                    <Field label="Responsible technician">
-                      <Select value={f.claim_tech}
-                        onChange={(e) => setF({ ...f, claim_tech: e.target.value })}>
-                        <option value="">—</option>
-                        {team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                      </Select>
-                    </Field>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={f.claim_in_stock}
-                        onChange={(e) => setF({ ...f, claim_in_stock: e.target.checked })} />
-                      Material in hand / in stock (use now, claim & replenish later)
-                    </label>
+                {/* Spares used — add as many as needed, each BSL or Non-BSL */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-600">Spares used</span>
+                    <button type="button"
+                      onClick={() => setF((p) => ({ ...p, spares: [...p.spares, newSpare()] }))}
+                      className="text-xs font-medium text-sky-600 hover:underline">
+                      + Add spare
+                    </button>
                   </div>
-                )}
+
+                  {f.spares.length === 0 && (
+                    <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                      No spares — records Work Started with materials “None”.
+                    </p>
+                  )}
+
+                  {f.spares.map((s, i) => {
+                    const set = (patch: Partial<SpareRow>) =>
+                      setF((p) => ({
+                        ...p,
+                        spares: p.spares.map((x, j) => (j === i ? { ...x, ...patch } : x)),
+                      }));
+                    return (
+                      <div key={i} className="space-y-2 rounded-md bg-slate-50 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-500">Spare {i + 1}</span>
+                          <button type="button"
+                            onClick={() => setF((p) => ({ ...p, spares: p.spares.filter((_, j) => j !== i) }))}
+                            className="text-xs text-rose-600 hover:underline">
+                            Remove
+                          </button>
+                        </div>
+
+                        <Field label="Source">
+                          <Select value={s.source}
+                            onChange={(e) => set({ source: e.target.value as SpareRow["source"] })}>
+                            <option value="bsl">Blue Star claim → BSL MR Pending</option>
+                            <option value="non_bsl">Non-Blue-Star → Vendor/Supplier</option>
+                          </Select>
+                        </Field>
+
+                        <Field label="Material — pick or type">
+                          <Input
+                            list="bsl-materials"
+                            value={s.material_name}
+                            placeholder="Select or type a material…"
+                            onChange={(e) => {
+                              const m = materials.find((x) => x.name === e.target.value);
+                              set({ material_name: e.target.value, uom: m?.uom ?? s.uom });
+                            }}
+                          />
+                        </Field>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <Field label="Qty">
+                            <Input type="number" min={0} value={s.qty}
+                              onChange={(e) => set({ qty: Number(e.target.value) })} />
+                          </Field>
+                          <Field label="UoM">
+                            <Input value={s.uom} onChange={(e) => set({ uom: e.target.value })} />
+                          </Field>
+                        </div>
+
+                        {s.source === "bsl" ? (
+                          <>
+                            <Field label="SAP MR Number">
+                              <Input value={s.mr_no} placeholder="SAP Material Request no."
+                                onChange={(e) => set({ mr_no: e.target.value })} />
+                            </Field>
+                            <Field label="Responsible technician">
+                              <Select value={s.technician_id}
+                                onChange={(e) => set({ technician_id: e.target.value })}>
+                                <option value="">—</option>
+                                {team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                              </Select>
+                            </Field>
+                            <label className="flex items-center gap-2 text-sm">
+                              <input type="checkbox" checked={s.in_stock}
+                                onChange={(e) => set({ in_stock: e.target.checked })} />
+                              In hand / in stock (use now, claim &amp; replenish later)
+                            </label>
+                          </>
+                        ) : (
+                          <Field label="Vendor / Supplier (optional)">
+                            <Input value={s.vendor} placeholder="Vendor or supplier name"
+                              onChange={(e) => set({ vendor: e.target.value })} />
+                          </Field>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <datalist id="bsl-materials">
+                    {materials.map((m) => <option key={m.id} value={m.name} />)}
+                  </datalist>
+                </div>
 
                 <Field label="Contents / remarks">
                   <Input value={f.remarks}
                     onChange={(e) => setF({ ...f, remarks: e.target.value })} />
                 </Field>
 
-                {f.branch !== "bsl" && (
+                {!hasBsl && (
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={f.closeNow}
                       onChange={(e) => setF({ ...f, closeNow: e.target.checked })} />
                     Close ticket now
                   </label>
                 )}
-                {f.branch !== "bsl" && f.closeNow && (
+                {!hasBsl && f.closeNow && (
                   <Field label="Close date">
                     <Input type="date" value={f.end_date}
                       onChange={(e) => setF({ ...f, end_date: e.target.value })} />
@@ -568,7 +601,9 @@ export default function TicketDetail() {
                 )}
 
                 <Button type="submit">
-                  {f.branch === "bsl" ? "Raise claim → Material Pending" : "Record Work Started"}
+                  {hasBsl
+                    ? `Raise ${bslCount} claim${bslCount > 1 ? "s" : ""} → Material Pending`
+                    : "Record Work Started"}
                 </Button>
               </form>
             )}
