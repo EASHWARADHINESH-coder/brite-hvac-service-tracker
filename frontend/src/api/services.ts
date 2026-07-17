@@ -10,6 +10,7 @@ import type {
   AppUser,
   AssistantReply,
   AuthToken,
+  Briefing,
   Complaint,
   CustomerMergeResult,
   DeliveryNoteDraft,
@@ -262,6 +263,8 @@ export const getDashboardSummary = () =>
   data<DashboardSummary>(api.get("/dashboard/summary"));
 export const getDashboardOverview = () =>
   data<DashboardOverview>(api.get("/dashboard/overview"));
+// Daily briefing agent (Engineer+): attention lists + a narrative summary.
+export const getBriefing = () => data<Briefing>(api.get("/ai/briefing"));
 
 // ---- Excel exports ----
 const stamp = () => new Date().toISOString().slice(0, 10);

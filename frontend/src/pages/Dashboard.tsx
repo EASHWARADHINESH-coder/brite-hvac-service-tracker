@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Card, PageHeader } from "../components/ui/primitives";
-import { getDashboardOverview } from "../api/services";
-import type { DashboardOverview } from "../types";
+import { getBriefing, getDashboardOverview } from "../api/services";
+import type { Briefing, DashboardOverview } from "../types";
 
 const STATUS_COLOR: Record<string, string> = {
   Open: "bg-amber-400",
@@ -36,6 +36,63 @@ function Bars({ data, colors }: { data: Record<string, number>; colors: Record<s
         </div>
       ))}
     </div>
+  );
+}
+
+function DailyBriefing() {
+  const [b, setB] = useState<Briefing | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    setLoading(true);
+    getBriefing().then(setB).catch(() => setB(null)).finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const counts = b && [
+    { label: "Overdue assign", n: b.overdue_assignments.length, tone: "text-rose-600" },
+    { label: "Closed · MR pending", n: b.mr_pending_closed.length, tone: "text-amber-700" },
+    { label: "PMS due", n: b.pms_due.length, tone: "text-blue-600" },
+    { label: "Payments pending", n: b.payments_pending.length, tone: "text-rose-600" },
+  ];
+
+  return (
+    <Card className="mb-6 border-l-4 border-l-slate-800">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-slate-800">Daily briefing</span>
+          {b && (
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              b.used_llm ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+            }`}>
+              {b.used_llm ? "AI" : "rule-based"}
+            </span>
+          )}
+          {b && <span className="text-xs text-slate-400">{b.date}</span>}
+        </div>
+        <button onClick={load} disabled={loading}
+          className="text-xs font-medium text-slate-600 hover:underline disabled:opacity-50">
+          {loading ? "…" : "Refresh"}
+        </button>
+      </div>
+
+      {loading && !b && <p className="text-sm text-slate-400">Preparing today's briefing…</p>}
+      {b && (
+        <>
+          <p className="whitespace-pre-wrap text-sm text-slate-700">{b.summary}</p>
+          {counts && (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {counts.map((c) => (
+                <div key={c.label} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className={`text-lg font-semibold ${c.tone}`}>{c.n}</div>
+                  <div className="text-[11px] text-slate-500">{c.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
 
@@ -99,6 +156,9 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader title="Dashboard" />
+
+      {/* Proactive daily briefing agent */}
+      <DailyBriefing />
 
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">

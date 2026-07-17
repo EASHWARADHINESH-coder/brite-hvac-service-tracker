@@ -109,6 +109,15 @@ def payment_follow_up() -> list[dict]:
 
 
 @mcp.tool()
+def daily_briefing() -> dict:
+    """Today's operations briefing: tickets overdue for assignment, closed tickets with a
+    pending Blue Star MR, PMS visits due, and payment follow-ups — plus a short summary."""
+    from app.services.ai import briefing
+    with Session(engine) as s:
+        return briefing.daily_briefing(s)
+
+
+@mcp.tool()
 def find_similar_tickets(ticket: str, limit: int = 5) -> list[dict]:
     """Past tickets semantically similar to a given ticket (by number or id) — useful for
     diagnosing a new complaint. Needs the RAG index; returns empty if AI/Ollama is off."""

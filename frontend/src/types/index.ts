@@ -477,3 +477,14 @@ export interface SpareItem {
   technician_id?: number | null;
   vendor?: string | null;
 }
+
+// Daily briefing agent output (Phase 7).
+export interface Briefing {
+  date: string;
+  summary: string;
+  used_llm: boolean;
+  overdue_assignments: { ticket_no: string; customer?: string | null; days_overdue: number }[];
+  mr_pending_closed: { ticket_no: string; customer?: string | null }[];
+  pms_due: { wo_number: string; customer?: string | null; visit_date: string }[];
+  payments_pending: { ticket_no: string; customer?: string | null; balance: number }[];
+}

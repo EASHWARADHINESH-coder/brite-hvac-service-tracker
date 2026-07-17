@@ -70,3 +70,15 @@ class RetrievedOut(BaseModel):
     label: str
     text: str
     distance: float
+
+
+class BriefingOut(BaseModel):
+    """Daily operations briefing — narrative summary + the structured attention lists."""
+
+    date: str
+    summary: str
+    used_llm: bool = False
+    overdue_assignments: list[dict] = []
+    mr_pending_closed: list[dict] = []
+    pms_due: list[dict] = []
+    payments_pending: list[dict] = []

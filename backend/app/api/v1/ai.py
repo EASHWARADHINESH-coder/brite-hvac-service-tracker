@@ -26,11 +26,12 @@ from app.schemas.ai import (
     AIStatus,
     AssistantAsk,
     AssistantReplyOut,
+    BriefingOut,
     DeliveryNoteDraftOut,
     RankedTicketOut,
     RetrievedOut,
 )
-from app.services.ai import actions, agent, assistant, delivery_note, jobs, metrics as ai_metrics, ranking, rag, vectorstore
+from app.services.ai import actions, agent, assistant, briefing, delivery_note, jobs, metrics as ai_metrics, ranking, rag, vectorstore
 from app.services.ai.actions import ActionError
 from app.services.ai.cache import all_stats
 from app.services.ai.llm import llm_available, provider_model_chain
@@ -87,6 +88,13 @@ def draft_delivery_note(ticket_id: int, session: SessionDep, enhance: bool = Tru
         return delivery_note.build_draft(session, ticket_id, enhance=enhance)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/briefing", response_model=BriefingOut, dependencies=[Depends(require_engineer)])
+def daily_briefing(session: SessionDep):
+    """Today's operations briefing: overdue assignments, closed-but-MR-pending, PMS due,
+    and payment follow-ups, with a short narrative summary (LLM when available)."""
+    return briefing.daily_briefing(session)
 
 
 @router.post("/assistant", response_model=AssistantReplyOut, dependencies=[Depends(_rate_limited)])
