@@ -14,6 +14,7 @@ import type {
   Complaint,
   CustomerMergeResult,
   DeliveryNoteDraft,
+  Followup,
   Customer,
   DashboardOverview,
   DashboardSummary,
@@ -309,6 +310,8 @@ export const exportClaims = (p: {
 export const getAIStatus = () => data<AIStatus>(api.get("/ai/status"));
 export const rankTickets = (opts: { limit?: number; explain?: boolean } = {}) =>
   data<RankedTicket[]>(api.get("/ai/rank-tickets", { params: opts }));
+export const draftFollowup = (ticketId: number, kind: "payment_reminder" | "status_update") =>
+  data<Followup>(api.post(`/ai/tickets/${ticketId}/draft-followup?kind=${kind}`, {}));
 export const draftDeliveryNote = (ticketId: number, enhance = true) =>
   data<DeliveryNoteDraft>(
     api.post(`/ai/tickets/${ticketId}/delivery-note`, {}, { params: { enhance } }),

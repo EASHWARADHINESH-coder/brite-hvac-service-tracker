@@ -28,10 +28,11 @@ from app.schemas.ai import (
     AssistantReplyOut,
     BriefingOut,
     DeliveryNoteDraftOut,
+    FollowupOut,
     RankedTicketOut,
     RetrievedOut,
 )
-from app.services.ai import actions, agent, assistant, briefing, delivery_note, jobs, metrics as ai_metrics, ranking, rag, vectorstore
+from app.services.ai import actions, agent, assistant, briefing, delivery_note, followup, jobs, metrics as ai_metrics, ranking, rag, vectorstore
 from app.services.ai.actions import ActionError
 from app.services.ai.cache import all_stats
 from app.services.ai.llm import llm_available, provider_model_chain
@@ -76,6 +77,19 @@ def rank_tickets(session: SessionDep, limit: int = 20, explain: bool = False):
     if explain:
         ranked = ranking.add_rationales(ranked)
     return ranked
+
+
+@router.post(
+    "/tickets/{ticket_id}/draft-followup",
+    response_model=FollowupOut,
+    dependencies=[Depends(require_engineer), Depends(_rate_limited)],
+)
+def draft_followup(ticket_id: int, session: SessionDep, kind: str = "status_update"):
+    """Draft a customer follow-up (kind = payment_reminder | status_update) from live data."""
+    try:
+        return followup.draft(session, ticket_id, kind)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post(

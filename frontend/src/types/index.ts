@@ -384,6 +384,16 @@ export interface RankedTicket {
   score: number;
   reasons: string[];
   rationale: string | null;
+  skill?: string | null;
+  suggested_assignee_id?: number | null;
+  suggested_assignee_name?: string | null;
+  assignee_reason?: string | null;
+}
+
+export interface Followup {
+  kind: string;
+  text: string;
+  used_llm: boolean;
 }
 
 export interface DeliveryNoteDraft {

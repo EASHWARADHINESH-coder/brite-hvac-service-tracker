@@ -9,11 +9,13 @@ import {
   Card,
   Field,
   Input,
+  Modal,
   PageHeader,
   Select,
 } from "../components/ui/primitives";
 import {
   addTicketUpdate,
+  draftFollowup,
   recordWorkStarted,
   deleteTicketReport,
   downloadTicketReport,
@@ -326,6 +328,8 @@ export default function TicketDetail() {
           </a>
         </div>
       </Card>
+
+      {canEditTasks && <FollowupDrafter ticketId={ticketId} hasTotal={ticket.total_amount != null} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Lifecycle timeline */}
@@ -694,6 +698,58 @@ function Meta({ label, value }: { label: string; value: string }) {
       <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
       <div className="font-medium">{value}</div>
     </div>
+  );
+}
+
+function FollowupDrafter({ ticketId, hasTotal }: { ticketId: number; hasTotal: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const gen = async (kind: "payment_reminder" | "status_update") => {
+    setLoading(kind);
+    try {
+      const d = await draftFollowup(ticketId, kind);
+      setText(d.text);
+      setOpen(true);
+      setCopied(false);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <Card className="mb-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium text-slate-700">Draft follow-up:</span>
+        <Button variant="ghost" onClick={() => gen("status_update")} disabled={!!loading}>
+          {loading === "status_update" ? "Drafting…" : "Status update"}
+        </Button>
+        {hasTotal && (
+          <Button variant="ghost" onClick={() => gen("payment_reminder")} disabled={!!loading}>
+            {loading === "payment_reminder" ? "Drafting…" : "Payment reminder"}
+          </Button>
+        )}
+        <span className="text-xs text-slate-400">AI-drafted from live data — review before sending.</span>
+      </div>
+
+      <Modal open={open} title="Draft follow-up" onClose={() => setOpen(false)}>
+        <textarea
+          className="h-48 w-full rounded-md border border-slate-300 p-3 text-sm focus:border-slate-500 focus:outline-none"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="mt-3 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>
+          <Button
+            onClick={() => { navigator.clipboard?.writeText(text); setCopied(true); }}
+          >
+            {copied ? "Copied ✓" : "Copy"}
+          </Button>
+        </div>
+      </Modal>
+    </Card>
   );
 }
 

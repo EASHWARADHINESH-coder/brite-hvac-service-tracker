@@ -109,6 +109,37 @@ def payment_follow_up() -> list[dict]:
 
 
 @mcp.tool()
+def triage_tickets(limit: int = 10) -> list[dict]:
+    """Auto-triage: unassigned tickets ranked by urgency, each with a suggested technician to
+    assign (skill match + lightest load) and the reasons."""
+    from app.services.ai import ranking
+    with Session(engine) as s:
+        ranked = ranking.rank_unassigned(s, limit=limit)
+        return [
+            {"ticket_no": r.ticket_no, "customer": r.customer_name, "score": r.score,
+             "reasons": r.reasons, "suggested_assignee": r.suggested_assignee_name,
+             "assignee_reason": r.assignee_reason}
+            for r in ranked
+        ]
+
+
+@mcp.tool()
+def draft_followup(ticket: str, kind: str = "status_update") -> dict:
+    """Draft a customer follow-up for a ticket (by number or id). kind = payment_reminder |
+    status_update. Returns the drafted text (from live data) for you to review before sending."""
+    from app.services.ai import followup
+    with Session(engine) as s:
+        t = s.get(Ticket, int(ticket)) if ticket.isdigit() else \
+            s.exec(select(Ticket).where(Ticket.ticket_no == ticket)).first()
+        if t is None:
+            return {"error": f"No ticket '{ticket}'"}
+        try:
+            return followup.draft(s, t.id, kind)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+
+@mcp.tool()
 def daily_briefing() -> dict:
     """Today's operations briefing: tickets overdue for assignment, closed tickets with a
     pending Blue Star MR, PMS visits due, and payment follow-ups — plus a short summary."""

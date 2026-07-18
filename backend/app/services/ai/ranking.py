@@ -20,8 +20,8 @@ from datetime import date
 
 from sqlmodel import Session, select
 
-from app.core.enums import ComplaintType, TicketStatus, WorkType
-from app.models.masters import Complaint, Customer
+from app.core.enums import ComplaintType, TeamType, TicketStatus, WorkType
+from app.models.masters import Complaint, Customer, TeamMember
 from app.models.tickets import Ticket
 from app.services.ticket_logic import assignment_overdue, is_assigned, primary_complaint_of
 
@@ -53,6 +53,11 @@ class RankedTicket:
     score: int
     reasons: list[str] = field(default_factory=list)
     rationale: str | None = None  # optional LLM one-liner
+    skill: str | None = None
+    # Auto-triage: a suggested technician to assign (deterministic — skill match + lightest load).
+    suggested_assignee_id: int | None = None
+    suggested_assignee_name: str | None = None
+    assignee_reason: str | None = None
 
 
 def _complaint_types(session: Session) -> dict[str, ComplaintType]:
@@ -113,7 +118,52 @@ def rank_unassigned(session: Session, today: date | None = None, limit: int = 20
         ranked.append(row)
 
     ranked.sort(key=lambda r: r.score, reverse=True)
-    return ranked[:limit]
+    ranked = ranked[:limit]
+    _suggest_assignees(session, ranked, {t.id: t for t in session.exec(select(Ticket)).all()})
+    return ranked
+
+
+def _open_load_by_tech(session: Session) -> dict[str, int]:
+    """Open (non-closed) ticket count per technician name — job lead OR on a lifecycle team."""
+    load: dict[str, int] = {}
+    for t in session.exec(select(Ticket)).all():
+        if t.status == TicketStatus.CLOSED:
+            continue
+        names: set[str] = set()
+        for u in t.updates:
+            if u.job_lead:
+                names.add(u.job_lead)
+            for m in u.team:
+                names.add(m.name)
+        for n in names:
+            load[n] = load.get(n, 0) + 1
+    return load
+
+
+def _suggest_assignees(session: Session, ranked: list[RankedTicket], tickets: dict[int, Ticket]) -> None:
+    """Attach a suggested technician to each ranked ticket (skill match, then lightest load)."""
+    technicians = [
+        m for m in session.exec(select(TeamMember)).all() if m.team_type == TeamType.TECHNICIAN
+    ]
+    if not technicians:
+        return
+    load = _open_load_by_tech(session)
+
+    for r in ranked:
+        skill = tickets[r.ticket_id].skill if r.ticket_id in tickets else None
+        r.skill = skill
+        matched = [
+            m for m in technicians
+            if skill and m.skills and skill.lower() in m.skills.lower()
+        ]
+        pool = matched or technicians
+        pick = min(pool, key=lambda m: load.get(m.name, 0))
+        r.suggested_assignee_id = pick.id
+        r.suggested_assignee_name = pick.name
+        r.assignee_reason = (
+            f"skill match, {load.get(pick.name, 0)} open job(s)" if matched
+            else f"lightest load ({load.get(pick.name, 0)} open job(s))"
+        )
 
 
 def add_rationales(ranked: list[RankedTicket]) -> list[RankedTicket]:

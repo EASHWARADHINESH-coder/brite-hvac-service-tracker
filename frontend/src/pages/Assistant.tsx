@@ -4,6 +4,7 @@ import { Button, Card, Input, PageHeader } from "../components/ui/primitives";
 import AIStatusPanel from "../components/features/ai/AIStatusPanel";
 import { useAuth } from "../context/AuthContext";
 import {
+  addTicketUpdate,
   executeAction,
   getAIStatus,
   rankTickets,
@@ -36,6 +37,7 @@ export default function Assistant() {
 
   const [ranked, setRanked] = useState<RankedTicket[] | null>(null);
   const [ranking, setRanking] = useState(false);
+  const [assigningId, setAssigningId] = useState<number | null>(null);
 
   useEffect(() => {
     getAIStatus().then(setStatus).catch(() => setStatus(null));
@@ -99,6 +101,26 @@ export default function Assistant() {
       setRanked(await rankTickets({ limit: 10, explain: true }));
     } finally {
       setRanking(false);
+    }
+  }
+
+  // Auto-triage: confirm the suggested assignee -> add an Assigned lifecycle row.
+  async function assign(r: RankedTicket) {
+    if (!r.suggested_assignee_id || !r.suggested_assignee_name) return;
+    if (!window.confirm(`Assign ${r.ticket_no} to ${r.suggested_assignee_name}?`)) return;
+    setAssigningId(r.ticket_id);
+    try {
+      await addTicketUpdate(r.ticket_id, {
+        stage: "Assigned",
+        job_lead: r.suggested_assignee_name,
+        team_ids: [r.suggested_assignee_id],
+      });
+      // Drop it from the list — it's no longer unassigned.
+      setRanked((cur) => (cur ? cur.filter((x) => x.ticket_id !== r.ticket_id) : cur));
+    } catch {
+      /* ignore; the row stays so the user can retry */
+    } finally {
+      setAssigningId(null);
     }
   }
 
@@ -221,6 +243,22 @@ export default function Assistant() {
                   <div className="mt-1 text-xs text-slate-500">{r.reasons.join(" · ")}</div>
                   {r.rationale && (
                     <div className="mt-1 text-xs italic text-emerald-700">{r.rationale}</div>
+                  )}
+                  {r.suggested_assignee_name && (
+                    <div className="mt-2 flex items-center justify-between gap-2 rounded bg-slate-50 px-2 py-1.5">
+                      <div className="min-w-0 text-xs">
+                        <span className="text-slate-400">Suggest:</span>{" "}
+                        <span className="font-medium text-slate-700">{r.suggested_assignee_name}</span>
+                        <span className="text-slate-400"> · {r.assignee_reason}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        onClick={() => assign(r)}
+                        disabled={assigningId === r.ticket_id}
+                      >
+                        {assigningId === r.ticket_id ? "…" : "Assign"}
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}

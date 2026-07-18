@@ -20,6 +20,16 @@ class RankedTicketOut(BaseModel):
     score: int
     reasons: list[str] = []
     rationale: str | None = None
+    skill: str | None = None
+    suggested_assignee_id: int | None = None
+    suggested_assignee_name: str | None = None
+    assignee_reason: str | None = None
+
+
+class FollowupOut(BaseModel):
+    kind: str            # payment_reminder | status_update
+    text: str
+    used_llm: bool = False
 
 
 class DraftLineOut(BaseModel):
