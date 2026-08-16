@@ -7,14 +7,25 @@ the Job Lead OR appears in any lifecycle update's assigned team.
 
 from sqlmodel import Session, select
 
-from app.core.enums import PRIVILEGED_ROLES
+from app.core.enums import ORG_SCOPE_ROLES, PRIVILEGED_ROLES, UserRole
 from app.models.masters import TeamMember
 from app.models.tickets import TicketTeamLink, TicketUpdate
 from app.models.user import User
 
 
 def is_privileged(user: User) -> bool:
+    """Can ACT across all tickets (Service Admin / Engineer). Gates writes — excludes MD."""
     return user.role in PRIVILEGED_ROLES
+
+
+def has_org_scope(user: User) -> bool:
+    """Can SEE every ticket (Admin / Engineer / Managing Director). Read scope only."""
+    return user.role in ORG_SCOPE_ROLES
+
+
+def is_read_only(user: User) -> bool:
+    """Org-wide observer with no write rights (Managing Director)."""
+    return user.role == UserRole.MANAGING_DIRECTOR
 
 
 def owned_ticket_ids(session: Session, user: User) -> set[int]:
@@ -41,4 +52,5 @@ def owned_ticket_ids(session: Session, user: User) -> set[int]:
 
 
 def can_view_ticket(session: Session, user: User, ticket_id: int) -> bool:
-    return is_privileged(user) or ticket_id in owned_ticket_ids(session, user)
+    # Read gate: org-scope roles (incl. MD) see everything; others only their own work.
+    return has_org_scope(user) or ticket_id in owned_ticket_ids(session, user)

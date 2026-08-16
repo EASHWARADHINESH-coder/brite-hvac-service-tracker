@@ -15,6 +15,7 @@ from app.core.enums import LifecycleStage, TicketStatus, WorkType
 from app.models.masters import Customer
 from app.models.pms import PMS, PMSVisitTicket
 from app.models.tickets import Ticket, TicketUpdate
+from app.services.ai import indexing
 from app.schemas.pms import (
     GenerateResult,
     PMSCreate,
@@ -79,6 +80,7 @@ def create_pms(payload: PMSCreate, session: SessionDep):
     session.add(pms)
     session.commit()
     session.refresh(pms)
+    indexing.pms_changed(pms.id)
     return pms
 
 
@@ -167,6 +169,7 @@ def auto_generate(session: SessionDep):
             ticket = _create_pms_ticket(session, pms, d)
             session.add(PMSVisitTicket(pms_id=pms.id, visit_no=visit_no, ticket_id=ticket.id))
             session.commit()
+            indexing.ticket_changed(ticket.id)
             created.append(ticket.ticket_no)
     return GenerateResult(created=len(created), tickets=created)
 
@@ -180,6 +183,7 @@ def remove_generated(session: SessionDep):
     generated manually when it's actually needed.
     """
     removed: list[str] = []
+    removed_ids: list[int] = []
     kept = 0
     for link in session.exec(select(PMSVisitTicket)).all():
         ticket = session.get(Ticket, link.ticket_id)
@@ -195,12 +199,15 @@ def remove_generated(session: SessionDep):
             kept += 1
             continue
         ticket_no = ticket.ticket_no
+        removed_ids.append(ticket.id)
         for u in list(ticket.updates):
             session.delete(u)
         session.delete(link)
         session.delete(ticket)
         removed.append(ticket_no)
     session.commit()
+    for tid in removed_ids:
+        indexing.ticket_deleted(tid)
     return RemoveResult(removed=len(removed), tickets=removed, kept=kept)
 
 
@@ -222,4 +229,5 @@ def regenerate_schedule(pms_id: int, session: SessionDep):
     session.add(pms)
     session.commit()
     session.refresh(pms)
+    indexing.pms_changed(pms.id)
     return pms

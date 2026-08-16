@@ -37,7 +37,7 @@ with TestClient(app) as c:
         s.refresh(tm)
         s.add(User(username="admin", role=UserRole.SERVICE_ADMIN,
                    hashed_password=hash_password("admin123")))
-        s.add(User(username="kathar", role=UserRole.TASK_MANAGER, team_member_id=tm.id,
+        s.add(User(username="kathar", role=UserRole.TECHNICIAN, team_member_id=tm.id,
                    hashed_password=hash_password("pass123")))
         s.add(User(username="helper", role=UserRole.HELPER, team_member_id=tm.id,
                    hashed_password=hash_password("pass123")))
@@ -53,7 +53,7 @@ with TestClient(app) as c:
     assert c.post("/api/v1/auth/login", json={"username": "admin", "password": "x"}).status_code == 401
 
     # /me
-    assert c.get("/api/v1/auth/me", headers=auth(kathar_t)).json()["role"] == "Task Manager"
+    assert c.get("/api/v1/auth/me", headers=auth(kathar_t)).json()["role"] == "Technician"
 
     # Admin can create master data; task manager cannot
     cust = c.post("/api/v1/customers", json={"name": "Acme"}, headers=auth(admin_t))

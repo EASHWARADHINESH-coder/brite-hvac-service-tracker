@@ -47,8 +47,22 @@ class Ticket(SQLModel, table=True):
     # Repaired Service payment tracking: total agreed amount (payments recorded separately).
     total_amount: Optional[float] = None
 
+    # Manual billing (Repaired Service): bill number + date + remarks, entered retroactively.
+    bill_no: Optional[str] = None
+    bill_date: Optional[date] = None
+    bill_remarks: Optional[str] = None
+
+    # Commissioning / installation report (free text). Shown when the primary complaint
+    # type is Commissioning; the PDF is a category="commissioning" TicketReport.
+    commissioning_status: Optional[str] = None
+    commissioning_remarks: Optional[str] = None
+
     status: TicketStatus = Field(default=TicketStatus.OPEN, index=True)
     reopen: bool = Field(default=False)
+    # Manually starred as important — boosts this ticket in the dashboard priority list.
+    starred: bool = Field(default=False)
+    # Set when the ticket is cancelled (terminal). The number is kept, never reused.
+    cancel_reason: Optional[str] = None
 
     updates: list["TicketUpdate"] = Relationship(back_populates="ticket")
 

@@ -22,7 +22,8 @@ interface AuthContextValue {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
-  isPrivileged: boolean; // Service Admin or Service Engineer
+  isPrivileged: boolean; // Service Admin or Service Engineer (can write)
+  hasOrgScope: boolean;  // + Managing Director (org-wide read-only)
   isAdmin: boolean;
   canEditTasks: boolean; // Admin/Engineer/Technician (not Helper)
 }
@@ -57,13 +58,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role;
+    // isPrivileged gates WRITES — Managing Director is deliberately excluded (read-only).
     const isPrivileged = role === "Service Admin" || role === "Service Engineer";
+    // hasOrgScope gates org-wide READ views (dashboard, WIP reports, escalations).
+    const hasOrgScope = isPrivileged || role === "Managing Director";
     return {
       user,
       loading,
       login,
       logout,
       isPrivileged,
+      hasOrgScope,
       isAdmin: role === "Service Admin",
       canEditTasks: isPrivileged || role === "Technician",
     };

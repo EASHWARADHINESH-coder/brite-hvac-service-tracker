@@ -3,6 +3,8 @@ import type { FormEvent, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import StatusBadge from "../components/ui/StatusBadge";
+import { Skeleton } from "../components/ui/primitives";
+import { useToast } from "../components/ui/Toast";
 import { addTicketUpdate, getTicket } from "../api/services";
 import { useAuth } from "../context/AuthContext";
 import { LIFECYCLE_STAGES } from "../types";
@@ -35,7 +37,16 @@ export default function MobileTicket() {
   useEffect(() => { load(); }, [ticketId]);
 
   if (err) return <Shell><p className="p-6 text-sm text-slate-500">{err}</p></Shell>;
-  if (!ticket) return <Shell><p className="p-6 text-sm text-slate-400">Loading…</p></Shell>;
+  if (!ticket)
+    return (
+      <Shell>
+        <div className="space-y-3 p-4">
+          <Skeleton className="h-7 w-40" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      </Shell>
+    );
 
   const isClosed = ticket.status === "Closed";
 
@@ -65,6 +76,12 @@ export default function MobileTicket() {
         {ticket.mr_pending && (
           <div className="rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-800">
             MR Pending — Blue Star claim not yet completed
+          </div>
+        )}
+
+        {ticket.defective_pending && (
+          <div className="rounded-md bg-orange-100 px-3 py-2 text-sm text-orange-800">
+            Defective Part — not yet dispatched to Blue Star
           </div>
         )}
 
@@ -144,6 +161,26 @@ function ActionPanel({
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  /**
+   * One-tap logging for the common case: a technician on site marking work started.
+   * Deliberately limited to benign, reversible stages — closing still goes through the form
+   * so it can't happen from a stray tap.
+   */
+  const quick = async (quickStage: LifecycleStage, label: string) => {
+    setSaving(true);
+    try {
+      await addTicketUpdate(ticket.id, { stage: quickStage, action_date: todayStr() });
+      await onSaved();
+      toast.success(label);
+    } catch (e2: unknown) {
+      const detail = (e2 as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error("Couldn't save", detail);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -161,9 +198,11 @@ function ActionPanel({
       await addTicketUpdate(ticket.id, payload);
       setJobLead(""); setRemarks(""); setOpen(false);
       await onSaved();
+      toast.success(`${stage} recorded`);
     } catch (e2: unknown) {
       const detail = (e2 as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(detail ?? "Couldn't save. Try again.");
+      toast.error("Couldn't save", detail);
     } finally {
       setSaving(false);
     }
@@ -173,7 +212,18 @@ function ActionPanel({
     "w-full rounded-md border border-slate-300 px-3 py-2.5 text-base focus:border-slate-500 focus:outline-none";
 
   if (!open) {
+    const canStart = !isClosed && ticket.is_assigned;
     return (
+      <div className="space-y-2">
+        {canStart && (
+          <button
+            onClick={() => quick("Work Started", "Work started")}
+            disabled={saving}
+            className="w-full rounded-md bg-sky-600 py-4 text-base font-semibold text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "▶ Start work now"}
+          </button>
+        )}
       <div className="flex gap-2">
         <button
           onClick={() => { setStage(defaultStage); setOpen(true); }}
@@ -189,6 +239,7 @@ function ActionPanel({
             Close job
           </button>
         )}
+      </div>
       </div>
     );
   }

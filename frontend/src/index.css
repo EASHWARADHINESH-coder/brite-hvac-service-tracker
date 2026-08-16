@@ -1,3 +1,220 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Design tokens.
+ *
+ * Tailwind's palette is re-pointed at these variables (see tailwind.config.js), so the ~670
+ * existing colour classes across the app become theme-aware without touching a component.
+ * Dark mode is a *designed* second theme, not a naive inversion: the ramps are re-picked so
+ * text keeps its contrast and tinted status backgrounds stay legible on a dark surface.
+ *
+ * Every ramp defines the full 50–900 range even where the app currently uses only a few
+ * steps — an undefined step would silently drop the class and take its colour with it.
+ *
+ * Values are space-separated RGB channels so Tailwind's <alpha-value> (bg-white/40) works.
+ */
+
+:root {
+  --c-white: 255 255 255;
+
+  /* Neutral — light: 50 lightest ... 900 darkest. */
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+
+  --amber-50: 255 251 235;
+  --amber-100: 254 243 199;
+  --amber-200: 253 230 138;
+  --amber-300: 252 211 77;
+  --amber-400: 251 191 36;
+  --amber-500: 245 158 11;
+  --amber-600: 217 119 6;
+  --amber-700: 180 83 9;
+  --amber-800: 146 64 14;
+  --amber-900: 120 53 15;
+
+  --emerald-50: 236 253 245;
+  --emerald-100: 209 250 229;
+  --emerald-200: 167 243 208;
+  --emerald-300: 110 231 183;
+  --emerald-400: 52 211 153;
+  --emerald-500: 16 185 129;
+  --emerald-600: 5 150 105;
+  --emerald-700: 4 120 87;
+  --emerald-800: 6 95 70;
+  --emerald-900: 6 78 59;
+
+  --rose-50: 255 241 242;
+  --rose-100: 255 228 230;
+  --rose-200: 254 205 211;
+  --rose-300: 253 164 175;
+  --rose-400: 251 113 133;
+  --rose-500: 244 63 94;
+  --rose-600: 225 29 72;
+  --rose-700: 190 18 60;
+  --rose-800: 159 18 57;
+  --rose-900: 136 19 55;
+
+  --sky-50: 240 249 255;
+  --sky-100: 224 242 254;
+  --sky-200: 186 230 253;
+  --sky-300: 125 211 252;
+  --sky-400: 56 189 248;
+  --sky-500: 14 165 233;
+  --sky-600: 2 132 199;
+  --sky-700: 3 105 161;
+  --sky-800: 7 89 133;
+  --sky-900: 12 74 110;
+
+  --blue-50: 239 246 255;
+  --blue-100: 219 234 254;
+  --blue-200: 191 219 254;
+  --blue-300: 147 197 253;
+  --blue-400: 96 165 250;
+  --blue-500: 59 130 246;
+  --blue-600: 37 99 235;
+  --blue-700: 29 78 216;
+  --blue-800: 30 64 175;
+  --blue-900: 30 58 138;
+
+  --orange-50: 255 247 237;
+  --orange-100: 255 237 213;
+  --orange-200: 254 215 170;
+  --orange-300: 253 186 116;
+  --orange-400: 251 146 60;
+  --orange-500: 249 115 22;
+  --orange-600: 234 88 12;
+  --orange-700: 194 65 12;
+  --orange-800: 154 52 18;
+  --orange-900: 124 45 18;
+
+  --indigo-50: 238 242 255;
+  --indigo-100: 224 231 255;
+  --indigo-200: 199 210 254;
+  --indigo-300: 165 180 252;
+  --indigo-400: 129 140 248;
+  --indigo-500: 99 102 241;
+  --indigo-600: 79 70 229;
+  --indigo-700: 67 56 202;
+  --indigo-800: 55 48 163;
+  --indigo-900: 49 46 129;
+
+  /* Charts read colours from CSS so SVG marks follow the theme too. */
+  --chart-magnitude: #0e7490;
+  --chart-grid: #e2e8f0;
+
+  color-scheme: light;
+}
+
+/*
+ * Dark theme. The neutral ramp reverses meaning (50 becomes the deepest surface, 900 the
+ * brightest ink) so every structural class keeps working, and it is biased slightly cool
+ * rather than pure grey. For the hues, the low steps become deep desaturated fills and the
+ * high steps become light ink — the same reversal, so `bg-*-100 text-*-800` badges keep
+ * their contrast instead of glowing.
+ */
+:root.dark {
+  --c-white: 22 30 38;      /* card / raised surface */
+
+  --slate-50: 14 20 26;     /* page ground */
+  --slate-100: 28 37 46;
+  --slate-200: 39 51 62;    /* borders */
+  --slate-300: 55 70 84;
+  --slate-400: 129 146 161; /* lifted to clear 4.5:1 on the card surface */
+  --slate-500: 152 168 181;
+  --slate-600: 180 193 203;
+  --slate-700: 205 216 224;
+  --slate-800: 226 234 240;  /* primary ink */
+  --slate-900: 241 246 250;
+
+  --amber-50: 43 31 9;
+  --amber-100: 61 44 12;
+  --amber-200: 84 60 16;
+  --amber-300: 122 86 22;
+  --amber-400: 214 158 60;
+  --amber-500: 235 175 62;
+  --amber-600: 240 179 61;
+  --amber-700: 246 200 110;
+  --amber-800: 250 214 137;
+  --amber-900: 253 230 175;
+
+  --emerald-50: 7 40 29;
+  --emerald-100: 10 55 40;
+  --emerald-200: 14 74 54;
+  --emerald-300: 19 98 71;
+  --emerald-400: 45 180 130;
+  --emerald-500: 52 211 153;
+  --emerald-600: 60 214 156;
+  --emerald-700: 110 226 178;
+  --emerald-800: 152 236 200;
+  --emerald-900: 190 244 220;
+
+  --rose-50: 48 15 25;
+  --rose-100: 65 20 33;
+  --rose-200: 88 27 45;
+  --rose-300: 120 37 61;
+  --rose-400: 232 96 118;
+  --rose-500: 251 113 133;
+  --rose-600: 251 120 139;
+  --rose-700: 253 164 175;
+  --rose-800: 254 194 202;
+  --rose-900: 255 219 224;
+
+  --sky-50: 16 39 52;
+  --sky-100: 18 46 62;
+  --sky-200: 30 66 87;
+  --sky-300: 40 92 120;
+  --sky-400: 56 189 248;
+  --sky-500: 70 195 250;
+  --sky-600: 96 205 251;
+  --sky-700: 125 211 252;
+  --sky-800: 160 224 253;
+  --sky-900: 186 230 253;
+
+  --blue-50: 17 30 54;
+  --blue-100: 22 39 72;
+  --blue-200: 30 53 97;
+  --blue-300: 42 72 130;
+  --blue-400: 96 165 250;
+  --blue-500: 110 172 251;
+  --blue-600: 118 175 252;
+  --blue-700: 147 197 253;
+  --blue-800: 180 214 254;
+  --blue-900: 210 230 255;
+
+  --orange-50: 50 25 8;
+  --orange-100: 68 34 10;
+  --orange-200: 92 46 14;
+  --orange-300: 124 62 18;
+  --orange-400: 236 137 56;
+  --orange-500: 249 146 60;
+  --orange-600: 251 152 70;
+  --orange-700: 253 176 110;
+  --orange-800: 253 196 145;
+  --orange-900: 254 216 180;
+
+  --indigo-50: 26 26 56;
+  --indigo-100: 34 34 74;
+  --indigo-200: 46 46 100;
+  --indigo-300: 62 62 134;
+  --indigo-400: 129 140 248;
+  --indigo-500: 139 149 249;
+  --indigo-600: 154 162 250;
+  --indigo-700: 175 181 251;
+  --indigo-800: 196 201 252;
+  --indigo-900: 216 220 253;
+
+  --chart-magnitude: #38bdf8;
+  --chart-grid: #27333e;
+
+  color-scheme: dark;
+}

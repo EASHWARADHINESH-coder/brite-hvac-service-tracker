@@ -32,6 +32,7 @@ class TicketStatus(str, Enum):
     IN_PROGRESS = "In Progress"
     CLOSED = "Closed"
     REOPENED = "Reopened"
+    CANCELLED = "Cancelled"  # terminal; number retained, no reopen (non-MR tickets only)
 
 
 class LifecycleStage(str, Enum):
@@ -85,12 +86,21 @@ class ComplaintType(str, Enum):
 class UserRole(str, Enum):
     SERVICE_ADMIN = "Service Admin"        # everything: users, master data, deletes
     SERVICE_ENGINEER = "Service Engineer"  # day-to-day ops across all tickets + assign tasks
+    MANAGING_DIRECTOR = "Managing Director"  # org-wide read-only oversight; escalation level 2
     TECHNICIAN = "Technician"              # job lead; edits only their own tickets/tasks
     HELPER = "Helper"                      # follows job lead; view only their own tasks
 
 
-# Roles that can act across all tickets / are "privileged".
+# Roles that can ACT across all tickets. Deliberately excludes Managing Director — several
+# endpoints use is_privileged() to gate writes, so adding MD here would grant write access.
 PRIVILEGED_ROLES = {UserRole.SERVICE_ADMIN, UserRole.SERVICE_ENGINEER}
+# Roles that can SEE every ticket (org-wide read scope). MD observes but never edits.
+ORG_SCOPE_ROLES = PRIVILEGED_ROLES | {UserRole.MANAGING_DIRECTOR}
+# Task-scoped roles are limited to their own assigned work.
+
+# Escalation (no activity logged for N days on a still-open ticket).
+ESCALATION_L1_DAYS = 2  # -> Service Engineer + Service Admin
+ESCALATION_L2_DAYS = 5  # -> Managing Director
 # Roles scoped to only their own assigned tasks.
 TASK_SCOPED_ROLES = {UserRole.TECHNICIAN, UserRole.HELPER}
 

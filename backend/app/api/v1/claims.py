@@ -17,6 +17,7 @@ from app.schemas.material_claim import (
     ClaimUpdate,
     DefectiveStockRow,
 )
+from app.services.ai import indexing
 from app.services.material_claim import compute_claim_status, next_claim_no
 
 router = APIRouter(prefix="/claims", tags=["claims"], dependencies=[Depends(get_current_user)])
@@ -90,6 +91,7 @@ def create_claim(payload: ClaimCreate, session: SessionDep):
     session.add(claim)
     session.commit()
     session.refresh(claim)
+    indexing.claim_changed(claim.id)
     return claim
 
 
@@ -115,4 +117,5 @@ def update_claim(claim_id: int, payload: ClaimUpdate, session: SessionDep):
     session.add(claim)
     session.commit()
     session.refresh(claim)
+    indexing.claim_changed(claim.id)
     return claim

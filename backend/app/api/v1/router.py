@@ -19,7 +19,9 @@ from app.api.v1 import (
     material_ledger,
     materials,
     materials_tracker,
+    notifications,
     payments,
+    photos,
     pms,
     queries,
     reports,
@@ -28,6 +30,7 @@ from app.api.v1 import (
     team,
     tickets,
     users,
+    wip,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -53,7 +56,10 @@ api_router.include_router(claims.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(exports.router)
 api_router.include_router(tasks.router)
+api_router.include_router(notifications.router)
 api_router.include_router(payments.router)
 api_router.include_router(queries.router)
 api_router.include_router(reports.router)
+api_router.include_router(photos.router)
 api_router.include_router(ai.router)
+api_router.include_router(wip.router)

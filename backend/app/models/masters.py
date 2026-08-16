@@ -23,6 +23,8 @@ class Customer(SQLModel, table=True):
     secondary_mobile: Optional[str] = None
     mail_id: Optional[str] = None
     is_amc: bool = Field(default=False)    # legacy flag; contract status is now derived
+    # Key / VIP account — boosts this customer's tickets in the dashboard priority list.
+    key_account: bool = Field(default=False)
     # Warranty (WTY) period. Within these dates the contract status is WTY.
     warranty_start_date: Optional[date] = None
     warranty_end_date: Optional[date] = None

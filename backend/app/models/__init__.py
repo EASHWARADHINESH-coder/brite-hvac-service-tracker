@@ -28,4 +28,7 @@ from app.models.task import Task  # noqa: F401
 from app.models.payment import Payment  # noqa: F401
 from app.models.query import Query  # noqa: F401
 from app.models.report import TicketReport  # noqa: F401
+from app.models.photo import TicketPhoto  # noqa: F401
+from app.models.ticket_edit import TicketEdit  # noqa: F401
+from app.models.notification import Notification  # noqa: F401
 from app.models.ai_ops import AIMetric, AIJob, AIDocument  # noqa: F401

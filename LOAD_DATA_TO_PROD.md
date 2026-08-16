@@ -64,3 +64,5 @@ On startup the app runs `create_all` (no-op, tables already exist) and seeds mas
 - This is a full replace, not a merge: any records already created in prod are overwritten by the
   snapshot. (Prod was empty, so nothing is lost — the backup in step 2 covers you regardless.)
 - To refresh prod again later with newer local data, repeat with a fresh snapshot.
+- **Opposite direction** (pull live data down to local): see
+  [`PULL_FROM_LIVE.md`](PULL_FROM_LIVE.md), which uses `backend/pull_from_live.py`.

@@ -29,6 +29,11 @@ class UserCreate(SQLModel):
     team_member_id: Optional[int] = None
 
 
+class ChangePasswordRequest(SQLModel):
+    current_password: str
+    new_password: str
+
+
 class UserUpdate(SQLModel):
     username: Optional[str] = None
     full_name: Optional[str] = None

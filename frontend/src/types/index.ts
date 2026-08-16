@@ -3,7 +3,7 @@
 export type WorkType = "Breakdown" | "Service" | "Repaired Service" | "PMS";
 export type MachineType =
   | "VRF" | "Ductable" | "Package" | "Chiller" | "Split" | "Cassette" | "AHU";
-export type TicketStatus = "Open" | "In Progress" | "Closed" | "Reopened";
+export type TicketStatus = "Open" | "In Progress" | "Closed" | "Reopened" | "Cancelled";
 export type TeamType = "Technician" | "Helper" | "Contractor";
 export type ComplaintType = "Major Breakdown" | "Minor Breakdown" | "Commissioning";
 export type LifecycleStage =
@@ -34,6 +34,7 @@ export interface Customer {
   secondary_mobile?: string | null;
   mail_id?: string | null;
   is_amc?: boolean;
+  key_account?: boolean;
   warranty_start_date?: string | null;
   warranty_end_date?: string | null;
   contract_status?: "WTY" | "AMC" | "NIC";
@@ -84,12 +85,15 @@ export interface Ticket {
   skill?: string | null;
   status: TicketStatus;
   reopen: boolean;
+  starred?: boolean;
   // 72h assignment SLA (computed by backend)
   is_assigned?: boolean;
   assign_by?: string | null;
   assignment_overdue?: boolean;
-  // True while an unresolved Blue Star claim remains (work may still be closed).
+  // True while the ticket is waiting on material FROM Blue Star (work may still be closed).
   mr_pending?: boolean;
+  // True once the replacement is fitted but the defective unit is still owed back to BSL.
+  defective_pending?: boolean;
   // Repaired Service payment (null for other work types)
   total_amount?: number | null;
   paid_amount?: number | null;
@@ -122,6 +126,7 @@ export interface TicketReport {
   ticket_id: number;
   original_name: string;
   size: number;
+  category?: string;
   uploaded_by_name?: string | null;
   uploaded_at: string;
 }
@@ -151,12 +156,28 @@ export interface PaymentFollowUpRow {
   paid_amount: number;
   balance: number;
   ticket_status: string;
+  bill_no?: string | null;
+  bill_date?: string | null;
 }
 
+export interface TicketEditRow {
+  id: number;
+  note: string;
+  edited_by_name?: string | null;
+  edited_at: string;
+}
 export interface TicketDetail extends Ticket {
   primary_complaint?: string | null;
   requires_tc?: boolean;
+  cancel_reason?: string | null;
+  bill_no?: string | null;
+  bill_date?: string | null;
+  bill_remarks?: string | null;
+  is_commissioning?: boolean;
+  commissioning_status?: string | null;
+  commissioning_remarks?: string | null;
   updates: TicketUpdate[];
+  edits?: TicketEditRow[];
 }
 
 export interface PMS {
@@ -201,10 +222,158 @@ export interface MaterialsTrackerEntry {
   machine_type?: MachineType | null;
 }
 
-export type UserRole = "Service Admin" | "Service Engineer" | "Technician" | "Helper";
+export type UserRole =
+  | "Service Admin"
+  | "Service Engineer"
+  | "Managing Director"
+  | "Technician"
+  | "Helper";
 export const USER_ROLES: UserRole[] = [
-  "Service Admin", "Service Engineer", "Technician", "Helper",
+  "Service Admin", "Service Engineer", "Managing Director", "Technician", "Helper",
 ];
+
+export interface TicketPhoto {
+  id: number;
+  ticket_id: number;
+  original_name: string;
+  kind: "before" | "after" | "other";
+  caption?: string | null;
+  size: number;
+  uploaded_by_name?: string | null;
+  uploaded_at: string;
+}
+
+/** A semantic-search hit from the RAG layer. `distance` is lower = closer. */
+export interface AIRetrieved {
+  kind: "ticket" | "customer" | "pms" | "claim" | "material" | "inward" | "issue";
+  ref_id: number;
+  label: string;
+  text: string;
+  distance: number;
+}
+
+// ---- WIP reports & escalation ----
+export interface WipTicketBrief {
+  id: number;
+  ticket_no: string;
+  customer_name?: string | null;
+  customer_city?: string | null;
+  job_lead?: string | null;
+  team?: string[];
+  work_type: string;
+  status: string;
+  stage?: string;
+  complaint_date: string;
+  last_activity: string;
+  idle_days: number;
+  escalation_level: number;
+  // Set on Today-WIP rows: true when the ticket is carried over from an earlier day
+  // (work in progress, nothing logged today), with the date work began.
+  ongoing?: boolean;
+  started_on?: string | null;
+}
+export interface WipPerson {
+  name: string;
+  team_type: string;
+  today_count: number;
+  open_count: number;
+  today: WipTicketBrief[];
+  open: WipTicketBrief[];
+}
+export interface TodayWip {
+  date: string;
+  active_people: number;
+  total_touched: number;
+  people: WipPerson[];
+  tickets: WipTicketBrief[];          // customer-centric flat list (Dashboard table)
+  by_stage: Record<string, number>;   // stage distribution (Dashboard bar chart)
+}
+export interface WipReportPerson {
+  name: string;
+  team_type: string;
+  worked_count: number;
+  closed_count: number;
+  open_count: number;
+  active_days: number;
+}
+export interface WipReport {
+  period: string;
+  start: string;
+  end: string;
+  summary: {
+    total: number;
+    opened: number;
+    closed: number;
+    still_open: number;
+    by_status: Record<string, number>;
+    by_work_type: Record<string, number>;
+    breakdown: { total: number; opened: number; closed: number; still_open: number };
+  };
+  tickets: WipTicketBrief[];
+  per_technician: WipReportPerson[];
+}
+export interface PastWipRow {
+  id: number;
+  ticket_no: string;
+  customer_name?: string | null;
+  work_type: string;
+  complaint_date: string;
+  closed_on: string;
+  days_taken: number;
+  job_lead?: string | null;
+}
+export interface PastWip {
+  start: string;
+  end: string;
+  count: number;
+  avg_days_taken: number;
+  rows: PastWipRow[];
+}
+export interface FutureWip {
+  as_of: string;
+  total: number;
+  pms_visits: {
+    pms_id: number; visit_no: number; scheduled_on: string;
+    days_away: number; customer_name?: string | null;
+  }[];
+  tasks: {
+    id: number; title: string; due_date: string;
+    days_away: number; assignee?: string | null; priority: string;
+  }[];
+}
+export interface ThisWeek {
+  scope: string;
+  cash: { outstanding: number; collected_this_month: number };
+  pms_this_week: { customer?: string | null; wo_number: string; scheduled_on: string }[];
+  breakdown_this_week: {
+    ticket_no: string; customer?: string | null; status: string; complaint_date: string;
+  }[];
+}
+
+export interface BacklogWeek {
+  week_start: string;
+  label: string;
+  opened: number;
+  closed: number;
+  active_count: number;
+}
+export interface BacklogTeamRow {
+  name: string;
+  team_type: string;
+  present: boolean[];
+}
+export interface BacklogTrend {
+  weeks: BacklogWeek[];
+  team: BacklogTeamRow[];
+}
+
+export interface Escalations {
+  as_of: string;
+  l1_days: number;
+  l2_days: number;
+  level_1: WipTicketBrief[];
+  level_2: WipTicketBrief[];
+}
 
 // ---- Tasks ----
 export type TaskStatus = "Open" | "In Progress" | "Done";
@@ -350,11 +519,113 @@ export interface DashboardOverview {
     pms_due: number;
   };
   contracts?: Record<string, number>;
+  // Material Return KPI: work done, defective part still owed back to Blue Star.
+  defective_pending?: number;
+  breakdown_today?: number;
+  mr_pending?: number;
+  ageing?: Record<string, number>;
   // personal
   my_tickets?: Record<string, number>;
   my_tickets_total?: number;
   my_open_tasks?: number;
   my_open_queries?: number;
+}
+
+export interface AlertItem {
+  id: number;
+  ticket_no: string;
+  customer_name?: string | null;
+  work_type: string;
+  status: string;
+  age_days?: number;
+  balance?: number;
+  bill_no?: string | null;
+  days_overdue?: number;
+  claim_no?: string;
+  material_name?: string;
+  qty?: number;
+  uom?: string;
+  days_waiting?: number;
+}
+export interface AlertCategory {
+  count: number;
+  items: AlertItem[];
+  total?: number;         // outstanding_payments only
+  threshold_days?: number; // long_pending_breakdowns only
+}
+export interface DashboardAlerts {
+  scope: "org" | "personal";
+  long_pending_breakdowns?: AlertCategory;
+  outstanding_payments?: AlertCategory;
+  assignment_overdue?: AlertCategory;
+  material_returns?: AlertCategory;
+}
+
+export interface PriorityItem {
+  id: number;
+  ticket_no: string;
+  customer_name?: string | null;
+  work_type: string;
+  status: string;
+  score: number;
+  starred: boolean;
+  reasons: string[];
+}
+export interface DashboardPriority {
+  scope: "org" | "personal";
+  items?: PriorityItem[];
+}
+
+export interface DailyActivityPoint {
+  date: string;
+  closed: number;
+  people: number;
+  backlog: number;
+  per_person: number;
+}
+export interface DailyActivity {
+  scope: "org" | "personal";
+  start?: string;
+  end?: string;
+  series?: DailyActivityPoint[];
+}
+
+export interface AppNotification {
+  id: number;
+  kind: string;
+  title: string;
+  body?: string | null;
+  link?: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+export interface NotificationList {
+  unread: number;
+  items: AppNotification[];
+}
+
+export interface ResolutionMatch {
+  ticket_id: number;
+  ticket_no: string;
+  customer_name?: string | null;
+  complaint?: string | null;
+  machine_type?: string | null;
+  status: string;
+  closed_on?: string | null;
+  resolution?: string | null;
+  parts: string[];
+  distance: number;
+}
+
+export interface TriageResult {
+  work_type: string;
+  machine_type?: string | null;
+  primary_complaint?: string | null;
+  complaint_type?: string | null;
+  skill?: string | null;
+  priority: string;
+  rationale?: string | null;
+  source: string;
 }
 
 export interface DashboardSummary {

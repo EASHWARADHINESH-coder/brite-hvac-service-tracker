@@ -13,8 +13,10 @@ os.environ["SEED_DEMO_DATA"] = "true"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from smoke_auth_helper import authenticate  # noqa: E402
 
 with TestClient(app) as c:
+    authenticate(c)
     assert c.get("/api/v1/health").json() == {"status": "ok"}
 
     # seeded masters
@@ -73,9 +75,10 @@ with TestClient(app) as c:
         "customer_id": cust["id"], "wo_number": "WO-001",
         "wo_start_date": "2026-01-15", "schedule": "2 Months Once/Year",
     }).json()
-    assert pms["schedule_1"] == "2026-01-15", pms["schedule_1"]
-    assert pms["schedule_2"] == "2026-03-15", pms["schedule_2"]
-    assert pms["schedule_6"] == "2026-11-15", pms["schedule_6"]
+    # Visit dates are normalised to the 1st of the month (see services/pms_schedule).
+    assert pms["schedule_1"] == "2026-01-01", pms["schedule_1"]
+    assert pms["schedule_2"] == "2026-03-01", pms["schedule_2"]
+    assert pms["schedule_6"] == "2026-11-01", pms["schedule_6"]
 
     # materials tracker snapshots ticket context
     mt = c.post("/api/v1/materials-tracker", json={

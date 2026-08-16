@@ -14,5 +14,7 @@ class TicketReport(SQLModel, table=True):
     filename: str            # stored file name on disk (unique)
     original_name: str       # name the user uploaded
     size: int = 0            # bytes
+    # "general" (default) or "commissioning" (installation report PDF).
+    category: str = Field(default="general", index=True)
     uploaded_by_user_id: Optional[int] = Field(default=None, foreign_key="app_user.id")
     uploaded_at: datetime = Field(default_factory=datetime.now)

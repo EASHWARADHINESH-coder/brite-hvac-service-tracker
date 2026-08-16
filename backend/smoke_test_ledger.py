@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from datetime import date
 
 db_path = os.path.join(tempfile.gettempdir(), "service_tracker_ledger.db")
 if os.path.exists(db_path):
@@ -13,8 +14,10 @@ os.environ["SEED_DEMO_DATA"] = "true"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
+from smoke_auth_helper import authenticate  # noqa: E402
 
 with TestClient(app) as c:
+    authenticate(c)
     cust = c.post("/api/v1/customers", json={"name": "Test Co"}).json()
     ticket = c.post("/api/v1/tickets", json={
         "customer_id": cust["id"], "complaint_date": "2026-06-23",
@@ -48,7 +51,10 @@ with TestClient(app) as c:
     # Deliver as Used -> delivery note + consumed
     delivered = c.post(f"/api/v1/materials-ledger/issues/{iss['id']}/deliver",
                        json={"outcome": "Used"}).json()
-    assert delivered["delivery_note_no"] == "DN2026062301", delivered["delivery_note_no"]
+    # DN numbers are minted from the current date, so derive the expectation rather than
+    # hardcoding one (which silently rots the moment the calendar moves on).
+    expected_dn = f"DN{date.today():%Y%m%d}01"
+    assert delivered["delivery_note_no"] == expected_dn, delivered["delivery_note_no"]
     assert delivered["status"] == "Closed"
 
     stock = {s["material_name"]: s for s in c.get("/api/v1/materials-ledger/stock").json()}

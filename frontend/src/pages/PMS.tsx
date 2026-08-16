@@ -30,7 +30,7 @@ const VISIT_STATUS_STYLE: Record<PMSVisitRow["status"], string> = {
   Upcoming: "bg-slate-100 text-slate-600",
 };
 
-export default function PMSPage() {
+export default function PMSPage({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<PMS[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [schedule, setSchedule] = useState<PMSVisitRow[]>([]);
@@ -141,7 +141,7 @@ export default function PMSPage() {
   return (
     <div>
       <PageHeader
-        title="PMS — Preventive Maintenance"
+        title={embedded ? undefined : "PMS — Preventive Maintenance"}
         action={
           <div className="flex items-center gap-2">
             <Button onClick={doGenerate} disabled={busy}>

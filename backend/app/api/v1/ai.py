@@ -30,9 +30,12 @@ from app.schemas.ai import (
     DeliveryNoteDraftOut,
     FollowupOut,
     RankedTicketOut,
+    ResolutionOut,
     RetrievedOut,
+    TriageIn,
+    TriageOut,
 )
-from app.services.ai import actions, agent, assistant, briefing, delivery_note, followup, jobs, metrics as ai_metrics, ranking, rag, vectorstore
+from app.services.ai import actions, agent, assistant, briefing, delivery_note, followup, jobs, metrics as ai_metrics, ranking, rag, resolutions as resolutions_service, triage as triage_service, vectorstore
 from app.services.ai.actions import ActionError
 from app.services.ai.cache import all_stats
 from app.services.ai.llm import llm_available, provider_model_chain
@@ -109,6 +112,13 @@ def daily_briefing(session: SessionDep):
     """Today's operations briefing: overdue assignments, closed-but-MR-pending, PMS due,
     and payment follow-ups, with a short narrative summary (LLM when available)."""
     return briefing.daily_briefing(session)
+
+
+@router.post("/triage", response_model=TriageOut, dependencies=[Depends(_rate_limited)])
+def triage(payload: TriageIn, session: SessionDep, user: CurrentUser):
+    """Suggest ticket fields from a free-text complaint (fallback-first; review before creating)."""
+    guard_prompt(payload.text)
+    return triage_service.triage(session, payload.text, payload.machine_type)
 
 
 @router.post("/assistant", response_model=AssistantReplyOut, dependencies=[Depends(_rate_limited)])
@@ -207,6 +217,18 @@ def similar_tickets(ticket_id: int, session: SessionDep, user: CurrentUser, k: i
     if not can_view_ticket(session, user, ticket_id):
         raise HTTPException(403, "Not your task")
     return [vars(r) for r in rag.similar_tickets(session, ticket_id, k=k)]
+
+
+@router.get(
+    "/tickets/{ticket_id}/resolutions",
+    response_model=list[ResolutionOut],
+    dependencies=[Depends(_rate_limited)],
+)
+def ticket_resolutions(ticket_id: int, session: SessionDep, user: CurrentUser, k: int = 4):
+    """'What fixed it last time' — similar past tickets with their resolution + parts used."""
+    if not can_view_ticket(session, user, ticket_id):
+        raise HTTPException(403, "Not your task")
+    return resolutions_service.what_fixed_it(session, ticket_id, k=k)
 
 
 # ---- Async reindex job (Principle 5) ----

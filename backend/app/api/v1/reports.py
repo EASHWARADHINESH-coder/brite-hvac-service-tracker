@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status as http_status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status as http_status
 from fastapi.responses import FileResponse
 from sqlmodel import select
 
@@ -32,26 +32,29 @@ def _to_read(session, r: TicketReport) -> TicketReportRead:
         ticket_id=r.ticket_id,
         original_name=r.original_name,
         size=r.size,
+        category=r.category,
         uploaded_by_name=(uploader.full_name or uploader.username) if uploader else None,
         uploaded_at=r.uploaded_at,
     )
 
 
 @router.get("/{ticket_id}/reports", response_model=list[TicketReportRead])
-def list_reports(ticket_id: int, session: SessionDep, user: CurrentUser):
+def list_reports(ticket_id: int, session: SessionDep, user: CurrentUser,
+                 category: str | None = None):
     if not can_view_ticket(session, user, ticket_id):
         raise HTTPException(http_status.HTTP_403_FORBIDDEN, "Not your task")
-    reports = session.exec(
-        select(TicketReport).where(TicketReport.ticket_id == ticket_id)
-        .order_by(TicketReport.id.desc())
-    ).all()
+    query = select(TicketReport).where(TicketReport.ticket_id == ticket_id)
+    if category:
+        query = query.where(TicketReport.category == category)
+    reports = session.exec(query.order_by(TicketReport.id.desc())).all()
     return [_to_read(session, r) for r in reports]
 
 
 @router.post("/{ticket_id}/reports", response_model=TicketReportRead, status_code=201,
              dependencies=[Depends(require_admin)])
 def upload_report(
-    ticket_id: int, session: SessionDep, user: CurrentUser, file: UploadFile = File(...)
+    ticket_id: int, session: SessionDep, user: CurrentUser, file: UploadFile = File(...),
+    category: str = Form("general"),
 ):
     if not session.get(Ticket, ticket_id):
         raise HTTPException(404, "Ticket not found")
@@ -73,6 +76,7 @@ def upload_report(
         filename=stored,
         original_name=name,
         size=len(contents),
+        category=category or "general",
         uploaded_by_user_id=user.id,
         uploaded_at=datetime.now(),
     )

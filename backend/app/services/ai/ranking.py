@@ -42,6 +42,8 @@ _OVERDUE_BONUS = 50
 _REOPEN_BONUS = 25
 _AGE_PER_DAY = 2
 _AGE_CAP = 30
+_STAR_BONUS = 40      # manually starred as important
+_VIP_BONUS = 15       # key / VIP customer
 
 
 @dataclass
@@ -51,6 +53,8 @@ class RankedTicket:
     customer_name: str | None
     work_type: str
     score: int
+    status: str | None = None
+    starred: bool = False
     reasons: list[str] = field(default_factory=list)
     rationale: str | None = None  # optional LLM one-liner
     skill: str | None = None
@@ -64,9 +68,22 @@ def _complaint_types(session: Session) -> dict[str, ComplaintType]:
     return {c.name: c.complaint_type for c in session.exec(select(Complaint)).all()}
 
 
-def _score(ticket: Ticket, complaint_types: dict[str, ComplaintType], today: date) -> RankedTicket:
+def _score(
+    ticket: Ticket,
+    complaint_types: dict[str, ComplaintType],
+    today: date,
+    vip_customer_ids: set[int] | None = None,
+) -> RankedTicket:
     reasons: list[str] = []
     score = 0
+
+    if ticket.starred:
+        score += _STAR_BONUS
+        reasons.append("starred important")
+
+    if vip_customer_ids and ticket.customer_id in vip_customer_ids:
+        score += _VIP_BONUS
+        reasons.append("key/VIP customer")
 
     if assignment_overdue(ticket.complaint_date, ticket.updates, today):
         score += _OVERDUE_BONUS
@@ -96,9 +113,11 @@ def _score(ticket: Ticket, complaint_types: dict[str, ComplaintType], today: dat
     return RankedTicket(
         ticket_id=ticket.id,
         ticket_no=ticket.ticket_no,
-        customer_name=None,  # filled in by rank_unassigned
+        customer_name=None,  # filled in by the caller
         work_type=ticket.work_type.value,
         score=score,
+        status=ticket.status.value,
+        starred=ticket.starred,
         reasons=reasons,
     )
 
@@ -107,13 +126,15 @@ def rank_unassigned(session: Session, today: date | None = None, limit: int = 20
     """Rank tickets awaiting allocation (no Assigned-or-later lifecycle row), most urgent first."""
     today = today or date.today()
     complaint_types = _complaint_types(session)
-    customers = {c.id: c.name for c in session.exec(select(Customer)).all()}
+    all_customers = list(session.exec(select(Customer)).all())
+    customers = {c.id: c.name for c in all_customers}
+    vip_ids = {c.id for c in all_customers if c.key_account}
 
     ranked: list[RankedTicket] = []
     for ticket in session.exec(select(Ticket)).all():
         if is_assigned(ticket.updates) or ticket.status == TicketStatus.CLOSED:
             continue
-        row = _score(ticket, complaint_types, today)
+        row = _score(ticket, complaint_types, today, vip_ids)
         row.customer_name = customers.get(ticket.customer_id)
         ranked.append(row)
 
@@ -121,6 +142,27 @@ def rank_unassigned(session: Session, today: date | None = None, limit: int = 20
     ranked = ranked[:limit]
     _suggest_assignees(session, ranked, {t.id: t for t in session.exec(select(Ticket)).all()})
     return ranked
+
+
+def rank_open(session: Session, today: date | None = None, limit: int = 8) -> list[RankedTicket]:
+    """Rank all still-open tickets (any work type, assigned or not) by importance for the
+    dashboard's Priority list. Closed and Cancelled tickets are excluded."""
+    today = today or date.today()
+    complaint_types = _complaint_types(session)
+    all_customers = list(session.exec(select(Customer)).all())
+    customers = {c.id: c.name for c in all_customers}
+    vip_ids = {c.id for c in all_customers if c.key_account}
+
+    ranked: list[RankedTicket] = []
+    for ticket in session.exec(select(Ticket)).all():
+        if ticket.status in (TicketStatus.CLOSED, TicketStatus.CANCELLED):
+            continue
+        row = _score(ticket, complaint_types, today, vip_ids)
+        row.customer_name = customers.get(ticket.customer_id)
+        ranked.append(row)
+
+    ranked.sort(key=lambda r: r.score, reverse=True)
+    return ranked[:limit]
 
 
 def _open_load_by_tech(session: Session) -> dict[str, int]:

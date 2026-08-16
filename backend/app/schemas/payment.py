@@ -12,12 +12,20 @@ class PaymentCreate(SQLModel):
     remarks: Optional[str] = None
 
 
+class PaymentCorrection(SQLModel):
+    """A signed +/- adjustment to the collected amount (Admin only). Reason required."""
+    amount: float
+    reason: str
+    paid_date: Optional[date] = None
+
+
 class PaymentRead(SQLModel):
     id: int
     ticket_id: int
     amount: float
     paid_date: date
     is_advance: bool
+    is_correction: bool = False
     remarks: Optional[str]
 
 
@@ -46,3 +54,5 @@ class PaymentFollowUpRow(SQLModel):
     paid_amount: float
     balance: float
     ticket_status: str
+    bill_no: Optional[str] = None
+    bill_date: Optional[date] = None

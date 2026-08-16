@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.1:8b"
     # Ordered local fallback models (comma-separated Ollama tags), tried in turn after the
     # primary if it errors/isn't pulled. All free/local. Principle 2 — model-level failover.
-    ollama_fallback_models: str = "qwen2.5:3b,gemma2:2b"
+    ollama_fallback_models: str = "qwen2.5:3b,gemma2:2b,mistral:7b"
 
     # Embeddings for the RAG / semantic-search layer (always local Ollama, free).
     ollama_embed_model: str = "nomic-embed-text"

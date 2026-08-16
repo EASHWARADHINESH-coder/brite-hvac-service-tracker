@@ -2,22 +2,23 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import Layout from "./components/layout/Layout";
+import { ToastProvider } from "./components/ui/Toast";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import Assistant from "./pages/Assistant";
-import Customers from "./pages/Customers";
+import CustomersPms from "./pages/CustomersPms";
 import CustomerDetail from "./pages/CustomerDetail";
-import CreateTicket from "./pages/CreateTicket";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Materials from "./pages/Materials";
 import MobileTicket from "./pages/MobileTicket";
 import Payments from "./pages/Payments";
-import PMSPage from "./pages/PMS";
-import Queries from "./pages/Queries";
+import Wip from "./pages/Wip";
 import Tasks from "./pages/Tasks";
 import Team from "./pages/Team";
 import TeamMemberDetail from "./pages/TeamMemberDetail";
 import TicketDetail from "./pages/TicketDetail";
+import TicketPrint from "./pages/TicketPrint";
 import Tickets from "./pages/Tickets";
 import Users from "./pages/Users";
 
@@ -34,7 +35,7 @@ function RequireRole({ allow, children }: { allow: boolean; children: ReactNode 
 }
 
 function AppRoutes() {
-  const { isPrivileged, isAdmin } = useAuth();
+  const { isPrivileged, isAdmin, hasOrgScope } = useAuth();
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -56,19 +57,24 @@ function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="tickets" element={<Tickets />} />
-        <Route path="tickets/new" element={<RequireRole allow={isPrivileged}><CreateTicket /></RequireRole>} />
+        <Route path="tickets/new" element={<RequireRole allow={isPrivileged}><Tickets /></RequireRole>} />
         <Route path="tickets/:id" element={<TicketDetail />} />
-        <Route path="pms" element={<RequireRole allow={isPrivileged}><PMSPage /></RequireRole>} />
+        <Route path="tickets/:id/print" element={<TicketPrint />} />
+        <Route path="customers-pms" element={<RequireRole allow={isPrivileged}><CustomersPms /></RequireRole>} />
+        {/* Old paths keep working for bookmarks. */}
+        <Route path="pms" element={<Navigate to="/customers-pms?tab=PMS" replace />} />
+        <Route path="wip" element={<RequireRole allow={hasOrgScope}><Wip /></RequireRole>} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="payments" element={<RequireRole allow={isPrivileged}><Payments /></RequireRole>} />
-        <Route path="queries" element={<Queries />} />
         <Route path="assistant" element={<Assistant />} />
         <Route path="materials" element={<RequireRole allow={isPrivileged}><Materials /></RequireRole>} />
-        <Route path="customers" element={<RequireRole allow={isAdmin}><Customers /></RequireRole>} />
+        <Route path="customers" element={<Navigate to="/customers-pms?tab=Customers" replace />} />
         <Route path="customers/:id" element={<RequireRole allow={isAdmin}><CustomerDetail /></RequireRole>} />
         <Route path="team" element={<RequireRole allow={isAdmin}><Team /></RequireRole>} />
         <Route path="team/:id" element={<RequireRole allow={isAdmin}><TeamMemberDetail /></RequireRole>} />
         <Route path="users" element={<RequireRole allow={isAdmin}><Users /></RequireRole>} />
+        {/* Unknown path (e.g. an old /queries bookmark) falls back to the dashboard. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );
@@ -76,10 +82,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

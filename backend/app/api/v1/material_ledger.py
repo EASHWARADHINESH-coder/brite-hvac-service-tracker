@@ -9,6 +9,7 @@ from app.api.deps import SessionDep, get_current_user, require_engineer
 from app.core.enums import IssueOutcome, IssueStatus
 from app.models.material_ledger import MaterialInward, MaterialIssue
 from app.models.tickets import Ticket
+from app.services.ai import indexing
 from app.schemas.material_ledger import (
     DeliverRequest,
     InwardCreate,
@@ -57,6 +58,7 @@ def create_inward(payload: InwardCreate, session: SessionDep):
     session.add(inward)
     session.commit()
     session.refresh(inward)
+    indexing.inward_changed(inward.id, inward.material_name)
     return inward
 
 
@@ -91,6 +93,7 @@ def allocate(payload: IssueCreate, session: SessionDep):
     session.add(issue)
     session.commit()
     session.refresh(issue)
+    indexing.issue_changed(issue.id, issue.material_name)
     return issue
 
 
@@ -111,4 +114,5 @@ def deliver(issue_id: int, payload: DeliverRequest, session: SessionDep):
     session.add(issue)
     session.commit()
     session.refresh(issue)
+    indexing.issue_changed(issue.id, issue.material_name)
     return issue

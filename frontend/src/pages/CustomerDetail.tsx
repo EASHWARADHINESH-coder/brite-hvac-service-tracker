@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { Card, PageHeader, Table } from "../components/ui/primitives";
+import { Card, PageHeader, Skeleton, Table } from "../components/ui/primitives";
 import StatusBadge from "../components/ui/StatusBadge";
 import { getCustomer, listPMS, listTickets } from "../api/services";
 import type { Customer, PMS, Ticket } from "../types";
@@ -35,7 +35,7 @@ export default function CustomerDetail() {
       .finally(() => setLoading(false));
   }, [customerId]);
 
-  if (loading) return <p className="text-slate-400">Loading…</p>;
+  if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-56" /><Skeleton className="h-40 w-full" /></div>;
   if (error || !customer)
     return (
       <div>

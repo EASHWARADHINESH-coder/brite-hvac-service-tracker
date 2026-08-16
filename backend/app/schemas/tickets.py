@@ -1,6 +1,6 @@
 """Request/response schemas for tickets and their lifecycle updates."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlmodel import SQLModel
@@ -85,6 +85,9 @@ class WorkStartedCreate(SQLModel):
     spares: list[SpareItem] = []
     close_now: bool = False              # ignored when a BSL claim is raised
     end_date: Optional[date] = None
+    # Crew present for this stage. Defaults to carrying the previous stage's team forward
+    # (the UI pre-ticks "same team"); an explicit list overrides it.
+    team_ids: list[int] = []
 
 
 class TeamMemberBrief(SQLModel):
@@ -119,23 +122,73 @@ class TicketRead(SQLModel):
     skill: Optional[str]
     status: TicketStatus
     reopen: bool
+    starred: bool = False
     customer_name: Optional[str] = None
     customer_city: Optional[str] = None
     # Assignment SLA (72h) helpers, computed from the lifecycle chain.
     is_assigned: bool = False
     assign_by: Optional[date] = None
     assignment_overdue: bool = False
-    # True while the ticket still has an unresolved Blue Star material claim. The work can be
-    # closed regardless; this drives the "MR Pending" tag so the paperwork isn't forgotten.
+    # True while the ticket is still waiting on material FROM Blue Star (MR raised / received /
+    # awaiting replenishment). Drives the "MR Pending" tag. The work can be closed regardless.
     mr_pending: bool = False
+    # True once the replacement is fitted (work done) but the defective unit has NOT yet been
+    # dispatched back to BSL (no POD). Drives the "Defective Part" tag and the Material Return
+    # KPI — i.e. an outstanding return we still owe Blue Star.
+    defective_pending: bool = False
     # Repaired Service payment (None for other work types).
     total_amount: Optional[float] = None
     paid_amount: Optional[float] = None
     balance: Optional[float] = None
 
 
+class TicketEditRead(SQLModel):
+    id: int
+    note: str
+    edited_by_name: Optional[str] = None
+    edited_at: datetime
+
+
+class TicketPatch(SQLModel):
+    """Post-creation edit of a ticket's core fields (customer / work type / complaint)."""
+    customer_id: Optional[int] = None
+    work_type: Optional[WorkType] = None
+    primary_complaint: Optional[str] = None
+
+
+class TicketCancel(SQLModel):
+    reason: str
+
+
+class TicketStar(SQLModel):
+    starred: bool
+
+
+class TicketBill(SQLModel):
+    """Manual billing details for a Repaired Service ticket (entered retroactively)."""
+    bill_no: Optional[str] = None
+    bill_date: Optional[date] = None
+    bill_remarks: Optional[str] = None
+
+
+class TicketCommissioning(SQLModel):
+    """Free-text installation/commissioning report (status + remarks)."""
+    status: Optional[str] = None
+    remarks: Optional[str] = None
+
+
 class TicketDetail(TicketRead):
     primary_complaint: Optional[str] = None
     # Whether Testing & Commissioning should be auto-suggested (Gas Leakage / Compressor failure).
     requires_tc: bool = False
+    cancel_reason: Optional[str] = None
+    # Manual billing (Repaired Service).
+    bill_no: Optional[str] = None
+    bill_date: Optional[date] = None
+    bill_remarks: Optional[str] = None
+    # Commissioning installation report — shown when the primary complaint type is Commissioning.
+    is_commissioning: bool = False
+    commissioning_status: Optional[str] = None
+    commissioning_remarks: Optional[str] = None
     updates: list[TicketUpdateRead] = []
+    edits: list[TicketEditRead] = []

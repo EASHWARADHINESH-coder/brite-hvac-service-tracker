@@ -25,6 +25,7 @@ class CustomerCreate(SQLModel):
     secondary_mobile: Optional[str] = None
     mail_id: Optional[str] = None
     is_amc: bool = False
+    key_account: bool = False
     warranty_start_date: Optional[date] = None
     warranty_end_date: Optional[date] = None
 

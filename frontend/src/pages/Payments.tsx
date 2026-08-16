@@ -9,20 +9,47 @@ import {
   PageHeader,
   Table,
 } from "../components/ui/primitives";
-import { addPayment, getPaymentFollowUp } from "../api/services";
+import { useToast } from "../components/ui/Toast";
+import { addPayment, addPaymentCorrection, getPaymentFollowUp } from "../api/services";
+import { useAuth } from "../context/AuthContext";
 import type { PaymentFollowUpRow } from "../types";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const inr = (n: number) => `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
 export default function Payments() {
+  const toast = useToast();
+  const { isAdmin } = useAuth();
   const [rows, setRows] = useState<PaymentFollowUpRow[]>([]);
   const [pay, setPay] = useState<PaymentFollowUpRow | null>(null);
   const [amount, setAmount] = useState("");
   const [paidDate, setPaidDate] = useState(today());
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
+  // Admin-only signed correction to the collected amount.
+  const [correct, setCorrect] = useState<PaymentFollowUpRow | null>(null);
+  const [corrAmount, setCorrAmount] = useState("");
+  const [corrReason, setCorrReason] = useState("");
+  const [corrSaving, setCorrSaving] = useState(false);
+
+  const doCorrect = async () => {
+    if (!correct) return;
+    const amt = Number(corrAmount);
+    if (!amt) { toast.error("Enter a non-zero amount (use a minus sign to decrease)"); return; }
+    if (!corrReason.trim()) { toast.error("A reason is required"); return; }
+    setCorrSaving(true);
+    try {
+      await addPaymentCorrection(correct.ticket_id, { amount: amt, reason: corrReason.trim() });
+      toast.success(`Correction applied (${amt > 0 ? "+" : ""}${amt})`);
+      setCorrect(null);
+      load();
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error("Couldn't apply the correction", detail);
+    } finally {
+      setCorrSaving(false);
+    }
+  };
 
   const load = () => getPaymentFollowUp().then(setRows);
   useEffect(() => { load(); }, []);
@@ -32,26 +59,21 @@ export default function Payments() {
     setAmount(String(r.balance));
     setPaidDate(today());
     setRemarks("");
-    setBanner(null);
   };
 
   const confirmPay = async () => {
     if (!pay) return;
     const amt = Number(amount);
-    if (!amt || amt <= 0) { setBanner("Enter a valid amount."); return; }
+    if (!amt || amt <= 0) { toast.error("Enter a valid amount"); return; }
     setSaving(true);
-    setBanner(null);
     try {
       const res = await addPayment(pay.ticket_id, { amount: amt, paid_date: paidDate, remarks: remarks || undefined });
-      setBanner(
-        res.fully_paid
-          ? `${pay.ticket_no} fully paid ✓`
-          : `Recorded ${inr(amt)} on ${pay.ticket_no}. Balance ${inr(res.balance)}.`,
-      );
+      if (res.fully_paid) toast.success(`${pay.ticket_no} fully paid`);
+      else toast.success(`Recorded ${inr(amt)} on ${pay.ticket_no}`, `Balance ${inr(res.balance)}`);
       setPay(null);
       load();
     } catch (err: any) {
-      setBanner(err?.response?.data?.detail ?? "Could not record payment.");
+      toast.error("Could not record payment", err?.response?.data?.detail);
     } finally {
       setSaving(false);
     }
@@ -62,12 +84,6 @@ export default function Payments() {
   return (
     <div>
       <PageHeader title="Payments — Repaired Service follow-up" />
-
-      {banner && (
-        <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-700">
-          {banner}
-        </div>
-      )}
 
       <div className="mb-4 flex gap-4">
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
@@ -80,7 +96,7 @@ export default function Payments() {
         </div>
       </div>
 
-      <Table head={["Ticket No.", "Customer", "Date", "Total", "Paid", "Balance", ""]}>
+      <Table head={["Ticket No.", "Customer", "Date", "Bill No.", "Bill Date", "Total", "Paid", "Balance", ""]}>
         {rows.map((r) => (
           <tr key={r.ticket_id}>
             <td className="px-4 py-2 font-mono font-medium">
@@ -90,19 +106,29 @@ export default function Payments() {
             </td>
             <td className="px-4 py-2">{r.customer_name ?? "—"}</td>
             <td className="px-4 py-2 text-xs">{r.complaint_date}</td>
+            <td className="px-4 py-2 text-xs">{r.bill_no ?? "—"}</td>
+            <td className="px-4 py-2 text-xs">{r.bill_date ?? "—"}</td>
             <td className="px-4 py-2">{inr(r.total_amount)}</td>
             <td className="px-4 py-2 text-emerald-700">{inr(r.paid_amount)}</td>
             <td className="px-4 py-2 font-semibold text-rose-600">{inr(r.balance)}</td>
             <td className="px-4 py-2 text-right">
-              <button onClick={() => openPay(r)}
-                className="text-xs font-medium text-slate-700 hover:underline">
-                Record payment →
-              </button>
+              <div className="flex justify-end gap-3">
+                {isAdmin && (
+                  <button onClick={() => { setCorrAmount(""); setCorrReason(""); setCorrect(r); }}
+                    className="text-xs font-medium text-slate-500 hover:underline">
+                    ± Correction
+                  </button>
+                )}
+                <button onClick={() => openPay(r)}
+                  className="text-xs font-medium text-slate-700 hover:underline">
+                  Record payment →
+                </button>
+              </div>
             </td>
           </tr>
         ))}
         {rows.length === 0 && (
-          <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">No outstanding payments 🎉</td></tr>
+          <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-400">No outstanding payments 🎉</td></tr>
         )}
       </Table>
 
@@ -133,6 +159,38 @@ export default function Payments() {
               <Button type="button" variant="ghost" onClick={() => setPay(null)}>Cancel</Button>
               <Button type="button" onClick={confirmPay} disabled={saving}>
                 {saving ? "Saving…" : "Record"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!correct}
+        title={correct ? `Ledger correction — ${correct.ticket_no}` : ""}
+        onClose={() => setCorrect(null)}
+      >
+        {correct && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              {correct.customer_name} · Paid {inr(correct.paid_amount)} ·
+              <span className="font-medium text-rose-600"> Balance {inr(correct.balance)}</span>
+            </p>
+            <Field label="Correction ₹ * (minus to decrease collected)">
+              <Input type="number" value={corrAmount} autoFocus placeholder="e.g. 500 or -200"
+                onChange={(e) => setCorrAmount(e.target.value)} />
+            </Field>
+            <Field label="Reason *">
+              <Input value={corrReason} onChange={(e) => setCorrReason(e.target.value)}
+                placeholder="Why is the collected amount being adjusted?" />
+            </Field>
+            <p className="text-xs text-slate-400">
+              Records a signed adjustment in the ledger (Admin only). It doesn't change the agreed total.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setCorrect(null)}>Cancel</Button>
+              <Button type="button" onClick={doCorrect} disabled={corrSaving}>
+                {corrSaving ? "Saving…" : "Apply correction"}
               </Button>
             </div>
           </div>

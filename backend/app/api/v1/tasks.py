@@ -16,6 +16,7 @@ from app.models.task import Task
 from app.models.tickets import Ticket
 from app.models.user import User
 from app.schemas.task import AssigneeRead, TaskCreate, TaskRead, TaskUpdate
+from app.services.notifications import notify
 from app.services.permissions import is_privileged
 
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(get_current_user)])
@@ -101,6 +102,14 @@ def create_task(payload: TaskCreate, session: SessionDep, user: CurrentUser):
     session.add(task)
     session.commit()
     session.refresh(task)
+    if task.assignee_user_id != user.id:
+        notify(
+            session, task.assignee_user_id, "task_assigned",
+            title=f"New task: {task.title}",
+            body=f"Assigned by {user.full_name or user.username}"
+            + (f" · due {task.due_date.isoformat()}" if task.due_date else ""),
+            link="/tasks",
+        )
     return _to_read(session, task)
 
 
@@ -111,6 +120,8 @@ def update_task(task_id: int, payload: TaskUpdate, session: SessionDep, user: Cu
         raise HTTPException(404, "Task not found")
 
     data = payload.model_dump(exclude_unset=True)
+    prev_assignee = task.assignee_user_id
+    prev_status = task.status
     if is_privileged(user):
         # Admin/Engineer may edit anything.
         if "assignee_user_id" in data and data["assignee_user_id"] is not None:
@@ -130,6 +141,26 @@ def update_task(task_id: int, payload: TaskUpdate, session: SessionDep, user: Cu
     session.add(task)
     session.commit()
     session.refresh(task)
+
+    # Re-assigned to someone new → notify them.
+    if task.assignee_user_id != prev_assignee and task.assignee_user_id != user.id:
+        notify(
+            session, task.assignee_user_id, "task_assigned",
+            title=f"Task assigned to you: {task.title}",
+            body=f"Assigned by {user.full_name or user.username}",
+            link="/tasks",
+        )
+    # Marked done → notify whoever raised it.
+    if (
+        task.status == TaskStatus.DONE and prev_status != TaskStatus.DONE
+        and task.assigned_by_user_id and task.assigned_by_user_id != user.id
+    ):
+        notify(
+            session, task.assigned_by_user_id, "task_completed",
+            title=f"Task completed: {task.title}",
+            body=f"Completed by {user.full_name or user.username}",
+            link="/tasks",
+        )
     return _to_read(session, task)
 
 

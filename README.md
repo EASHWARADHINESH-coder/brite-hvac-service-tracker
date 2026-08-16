@@ -110,3 +110,8 @@ Dev server proxies `/api` to the backend (target overridable via `VITE_API_PROXY
   `/ai/search`, `/ai/tickets/{id}/similar`, an agent `find_similar_tickets` tool, and grounded
   assistant answers. Verified live against local Ollama. Deployment (Hostinger VPS) is prepared
   in [DEPLOY.md](DEPLOY.md). See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+
+- **Data transfer between local and live.** Both directions are a SQLite file swap:
+  [LOAD_DATA_TO_PROD.md](LOAD_DATA_TO_PROD.md) pushes local → live;
+  [PULL_FROM_LIVE.md](PULL_FROM_LIVE.md) pulls live → local via `backend/pull_from_live.py`
+  (backs up `dev.db`, validates the snapshot, swaps it in, with a `--restore` roll-back).

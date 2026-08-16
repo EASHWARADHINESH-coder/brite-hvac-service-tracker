@@ -8,6 +8,7 @@ from app.models.masters import Customer
 from app.models.material_claim import MaterialClaim
 from app.models.pms import PMS
 from app.models.tickets import Ticket
+from app.services.ai import indexing
 from app.schemas.masters import CustomerCreate, CustomerMerge, CustomerRead, MergeResult
 
 router = APIRouter(
@@ -69,6 +70,7 @@ def create_customer(payload: CustomerCreate, session: SessionDep):
     session.add(customer)
     session.commit()
     session.refresh(customer)
+    indexing.customer_changed(customer.id)
     return _read(customer, _amc_customer_ids(session), date.today())
 
 
@@ -131,6 +133,7 @@ def update_customer(customer_id: int, payload: CustomerCreate, session: SessionD
     session.add(customer)
     session.commit()
     session.refresh(customer)
+    indexing.customer_changed(customer.id)
     return _read(customer, _amc_customer_ids(session), date.today())
 
 
@@ -160,3 +163,4 @@ def delete_customer(customer_id: int, session: SessionDep):
 
     session.delete(customer)
     session.commit()
+    indexing.customer_deleted(customer_id)

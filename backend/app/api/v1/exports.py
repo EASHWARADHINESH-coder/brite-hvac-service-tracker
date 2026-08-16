@@ -66,7 +66,8 @@ def export_tickets(
     summary = [
         [
             t.ticket_no, cust.get(t.customer_id, t.customer_id), t.complaint_date,
-            t.work_type.value, t.machine_type.value, t.skill or "",
+            # PMS tickets carry no machine type, so this must stay optional.
+            t.work_type.value, t.machine_type.value if t.machine_type else "", t.skill or "",
             t.status.value, "Yes" if t.reopen else "No",
         ]
         for t in tickets

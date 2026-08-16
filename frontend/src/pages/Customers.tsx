@@ -7,8 +7,11 @@ import {
   Input,
   Modal,
   PageHeader,
+  Pagination,
   Select,
   Table,
+  usePagination,
+  useTableSort,
 } from "../components/ui/primitives";
 import {
   createCustomer,
@@ -32,6 +35,7 @@ type FormState = {
   secondary_mobile: string;
   mail_id: string;
   contract_type: ContractType;
+  key_account: boolean;
   warranty_start_date: string;
   warranty_end_date: string;
 };
@@ -46,6 +50,7 @@ const EMPTY: FormState = {
   secondary_mobile: "",
   mail_id: "",
   contract_type: "NIC",
+  key_account: false,
   warranty_start_date: "",
   warranty_end_date: "",
 };
@@ -87,12 +92,13 @@ function toForm(c: Customer): FormState {
     secondary_mobile: c.secondary_mobile ?? "",
     mail_id: c.mail_id ?? "",
     contract_type,
+    key_account: c.key_account ?? false,
     warranty_start_date: c.warranty_start_date ?? "",
     warranty_end_date: c.warranty_end_date ?? "",
   };
 }
 
-export default function Customers() {
+export default function Customers({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [q, setQ] = useState("");
@@ -147,6 +153,14 @@ export default function Customers() {
   };
 
   const shown = amcOnly ? customers.filter((c) => c.is_amc) : customers;
+  const { rows: sortedShown, sort } = useTableSort(shown, {
+    name: (c) => c.name ?? "",
+    city: (c) => c.city ?? "",
+    contact_person: (c) => c.contact_person ?? "",
+    contact_number: (c) => c.contact_number ?? "",
+    mail_id: (c) => c.mail_id ?? "",
+  });
+  const { pageRows, ...pag } = usePagination(sortedShown, 25);
 
   const doExport = async () => {
     setExporting(true);
@@ -189,6 +203,7 @@ export default function Customers() {
       name: form.name, address: form.address, city: form.city, pincode: form.pincode,
       contact_person: form.contact_person, contact_number: form.contact_number,
       secondary_mobile: form.secondary_mobile, mail_id: form.mail_id,
+      key_account: form.key_account,
       warranty_start_date: isWty ? (form.warranty_start_date || null) : null,
       warranty_end_date: isWty ? (form.warranty_end_date || null) : null,
     };
@@ -227,7 +242,7 @@ export default function Customers() {
   return (
     <div>
       <PageHeader
-        title="Customers"
+        title={embedded ? undefined : "Customers"}
         action={
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={doExport} disabled={exporting}>
@@ -287,8 +302,19 @@ export default function Customers() {
         </div>
       )}
 
-      <Table head={["", "Name", "City", "Contact person", "Primary mobile", "Email", ""]}>
-        {shown.map((c) => (
+      <Table
+        sort={sort}
+        head={[
+          "",
+          { label: "Name", key: "name" },
+          { label: "City", key: "city" },
+          { label: "Contact person", key: "contact_person" },
+          { label: "Primary mobile", key: "contact_number" },
+          { label: "Email", key: "mail_id" },
+          "",
+        ]}
+      >
+        {pageRows.map((c) => (
           <tr key={c.id} className={selected.includes(c.id) ? "bg-amber-50" : undefined}>
             <td className="px-4 py-2">
               <input
@@ -307,6 +333,11 @@ export default function Customers() {
               }`}>
                 {c.contract_status ?? "NIC"}
               </span>
+              {c.key_account && (
+                <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase bg-violet-100 text-violet-700">
+                  VIP
+                </span>
+              )}
             </td>
             <td className="px-4 py-2">{c.city || "—"}</td>
             <td className="px-4 py-2">{c.contact_person || "—"}</td>
@@ -332,6 +363,7 @@ export default function Customers() {
           <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">No customers yet</td></tr>
         )}
       </Table>
+      <Pagination {...pag} />
 
       <Modal
         open={modalOpen}
@@ -399,6 +431,16 @@ export default function Customers() {
               onChange={(e) => set("mail_id", e.target.value)}
             />
           </FieldWithError>
+
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.key_account}
+              onChange={(e) => setForm((f) => ({ ...f, key_account: e.target.checked }))}
+            />
+            Key / VIP account
+            <span className="text-xs text-slate-400">— boosts this customer's tickets in the dashboard priority list</span>
+          </label>
 
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <Field label="Contract type">

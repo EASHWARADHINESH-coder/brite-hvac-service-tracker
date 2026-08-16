@@ -16,6 +16,9 @@ import type {
   DeliveryNoteDraft,
   Followup,
   Customer,
+  DailyActivity,
+  DashboardAlerts,
+  DashboardPriority,
   DashboardOverview,
   DashboardSummary,
   DefectiveStockRow,
@@ -41,6 +44,18 @@ import type {
   TicketReport,
   TicketStatus,
   WorkType,
+  AIRetrieved,
+  TicketPhoto,
+  NotificationList,
+  ResolutionMatch,
+  TriageResult,
+  TodayWip,
+  WipReport,
+  PastWip,
+  FutureWip,
+  Escalations,
+  BacklogTrend,
+  ThisWeek,
 } from "../types";
 
 const data = <T>(p: Promise<{ data: T }>) => p.then((r) => r.data);
@@ -107,10 +122,28 @@ export interface TicketFilters {
   work_type?: WorkType;
   customer_id?: number;
   q?: string;
+  mr_pending?: boolean;
+  defective_pending?: boolean;
 }
 export const listTickets = (filters: TicketFilters = {}) =>
   data<Ticket[]>(api.get("/tickets", { params: filters }));
 export const getTicket = (id: number) => data<TicketDetail>(api.get(`/tickets/${id}`));
+export const editTicket = (
+  id: number,
+  payload: { customer_id?: number; work_type?: WorkType; primary_complaint?: string | null },
+) => data<TicketDetail>(api.patch(`/tickets/${id}`, payload));
+export const cancelTicket = (id: number, reason: string) =>
+  data<TicketDetail>(api.post(`/tickets/${id}/cancel`, { reason }));
+export const starTicket = (id: number, starred: boolean) =>
+  data<TicketDetail>(api.put(`/tickets/${id}/star`, { starred }));
+export const setTicketBill = (
+  id: number,
+  payload: { bill_no?: string | null; bill_date?: string | null; bill_remarks?: string | null },
+) => data<TicketDetail>(api.put(`/tickets/${id}/bill`, payload));
+export const setCommissioning = (
+  id: number,
+  payload: { status?: string | null; remarks?: string | null },
+) => data<TicketDetail>(api.put(`/tickets/${id}/commissioning`, payload));
 export const createTicket = (payload: {
   customer_id: number;
   complaint_date: string;
@@ -143,15 +176,17 @@ export const recordWorkStarted = (
     spares: SpareItem[];
     close_now?: boolean;
     end_date?: string | null;
+    team_ids?: number[];
   },
 ) => data<TicketDetail>(api.post(`/tickets/${ticketId}/work-started`, payload));
 
 // ---- Ticket report PDFs ----
-export const listTicketReports = (ticketId: number) =>
-  data<TicketReport[]>(api.get(`/tickets/${ticketId}/reports`));
-export const uploadTicketReport = (ticketId: number, file: File) => {
+export const listTicketReports = (ticketId: number, category?: string) =>
+  data<TicketReport[]>(api.get(`/tickets/${ticketId}/reports`, { params: { category } }));
+export const uploadTicketReport = (ticketId: number, file: File, category?: string) => {
   const fd = new FormData();
   fd.append("file", file);
+  if (category) fd.append("category", category);
   return data<TicketReport>(
     api.post(`/tickets/${ticketId}/reports`, fd, { headers: { "Content-Type": "multipart/form-data" } }),
   );
@@ -250,6 +285,10 @@ export const addPayment = (
   ticketId: number,
   payload: { amount: number; paid_date?: string; remarks?: string },
 ) => data<PaymentSummary>(api.post(`/payments/ticket/${ticketId}`, payload));
+export const addPaymentCorrection = (
+  ticketId: number,
+  payload: { amount: number; reason: string; paid_date?: string },
+) => data<PaymentSummary>(api.post(`/payments/ticket/${ticketId}/correction`, payload));
 
 // ---- Queries ----
 export const listQueries = (status?: string) =>
@@ -264,6 +303,76 @@ export const getDashboardSummary = () =>
   data<DashboardSummary>(api.get("/dashboard/summary"));
 export const getDashboardOverview = () =>
   data<DashboardOverview>(api.get("/dashboard/overview"));
+export const getDashboardAlerts = () =>
+  data<DashboardAlerts>(api.get("/dashboard/alerts"));
+export const getDashboardPriority = (limit = 8) =>
+  data<DashboardPriority>(api.get("/dashboard/priority", { params: { limit } }));
+export const getDailyActivity = (days = 14) =>
+  data<DailyActivity>(api.get("/dashboard/daily-activity", { params: { days } }));
+
+// ---- Notifications ----
+export const getNotifications = () => data<NotificationList>(api.get("/notifications"));
+export const markNotificationRead = (id: number) => api.post(`/notifications/${id}/read`);
+export const markAllNotificationsRead = () => api.post("/notifications/read-all");
+
+// ---- WIP reports & escalation (org-scope roles only) ----
+// Self-service password change (Managing Director only, enforced server-side).
+export const changeOwnPassword = (current_password: string, new_password: string) =>
+  api.post("/auth/me/password", { current_password, new_password });
+
+// ---- Ticket site photos ----
+export const listTicketPhotos = (ticketId: number) =>
+  data<TicketPhoto[]>(api.get(`/tickets/${ticketId}/photos`));
+export const uploadTicketPhoto = (
+  ticketId: number, file: Blob, kind: string, caption?: string, filename = "photo.jpg",
+) => {
+  const fd = new FormData();
+  fd.append("file", file, filename);
+  fd.append("kind", kind);
+  if (caption) fd.append("caption", caption);
+  return data<TicketPhoto>(api.post(`/tickets/${ticketId}/photos`, fd));
+};
+export const deleteTicketPhoto = (ticketId: number, photoId: number) =>
+  api.delete(`/tickets/${ticketId}/photos/${photoId}`);
+/**
+ * Photo bytes as an object URL.
+ *
+ * The file endpoint is auth-gated and an <img src> cannot carry a bearer token, so the
+ * image is fetched through the authenticated client and wrapped in a blob URL instead.
+ * Callers must revoke the URL when the element unmounts.
+ */
+export const fetchTicketPhotoUrl = async (ticketId: number, photoId: number) => {
+  const res = await api.get(`/tickets/${ticketId}/photos/${photoId}/file`, {
+    responseType: "blob",
+  });
+  return URL.createObjectURL(res.data as Blob);
+};
+
+export const getTodayWip = (date?: string) =>
+  data<TodayWip>(api.get("/wip/today", { params: { date } }));
+export const getPastWip = (start?: string, end?: string) =>
+  data<PastWip>(api.get("/wip/past", { params: { start: start || undefined, end: end || undefined } }));
+export const getFutureWip = () => data<FutureWip>(api.get("/wip/future"));
+export const getWipReport = (period: string, date?: string) =>
+  data<WipReport>(api.get("/wip/report", { params: { period, date: date || undefined } }));
+export const downloadWipReport = async (period: string, date?: string) => {
+  const res = await api.get("/wip/report.xlsx", {
+    params: { period, date: date || undefined },
+    responseType: "blob",
+  });
+  const dispo = (res.headers as Record<string, string>)["content-disposition"] || "";
+  const match = /filename="?([^"]+)"?/.exec(dispo);
+  const filename = match ? match[1] : `wip-report-${period}.xlsx`;
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+};
+export const getEscalations = () => data<Escalations>(api.get("/wip/escalations"));
+export const getBacklogTrend = (weeks = 8) =>
+  data<BacklogTrend>(api.get("/wip/backlog-trend", { params: { weeks } }));
+export const getThisWeek = () => data<ThisWeek>(api.get("/dashboard/this-week"));
 // Daily briefing agent (Engineer+): attention lists + a narrative summary.
 export const getBriefing = () => data<Briefing>(api.get("/ai/briefing"));
 
@@ -318,11 +427,23 @@ export const draftDeliveryNote = (ticketId: number, enhance = true) =>
   );
 export const askAssistant = (question: string) =>
   data<AssistantReply>(api.post("/ai/assistant", { question }));
+export const triageTicket = (text: string, machine_type?: string) =>
+  data<TriageResult>(api.post("/ai/triage", { text, machine_type: machine_type || undefined }));
 
 export const executeAction = (proposal: AgentProposal) =>
   data<ActionResult>(api.post("/ai/actions/execute", { proposal }));
 
 // ---- AI status panel (Phase 6) ----
+// Semantic search over indexed tickets/customers (Service Admin / Engineer only).
+export const aiSearch = (q: string, k = 6) =>
+  data<AIRetrieved[]>(api.get("/ai/search", { params: { q, k } }));
+// Past tickets most similar to this one — respects ticket visibility.
+export const similarTickets = (ticketId: number, k = 5) =>
+  data<AIRetrieved[]>(api.get(`/ai/tickets/${ticketId}/similar`, { params: { k } }));
+// "What fixed it last time" — similar past tickets with their resolution + parts used.
+export const getTicketResolutions = (ticketId: number, k = 4) =>
+  data<ResolutionMatch[]>(api.get(`/ai/tickets/${ticketId}/resolutions`, { params: { k } }));
+
 export const getAIHealth = () => data<AIHealth>(api.get("/ai/health"));
 export const getAIMetrics = () => data<AIMetrics>(api.get("/ai/metrics"));
 export const reindexAI = () =>

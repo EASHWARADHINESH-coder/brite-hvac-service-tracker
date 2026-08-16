@@ -122,3 +122,16 @@ def requires_tc(updates: list[TicketUpdate]) -> bool:
     """Whether Testing & Commissioning should be auto-suggested for this ticket."""
     complaint = primary_complaint_of(updates)
     return complaint in TC_TRIGGER_COMPLAINTS if complaint else False
+
+
+def is_commissioning_ticket(session: Session, updates: list[TicketUpdate]) -> bool:
+    """Whether the ticket's primary complaint is of the Commissioning type (drives the
+    installation-report panel)."""
+    from app.core.enums import ComplaintType
+    from app.models.masters import Complaint
+
+    name = primary_complaint_of(updates)
+    if not name:
+        return False
+    complaint = session.exec(select(Complaint).where(Complaint.name == name)).first()
+    return bool(complaint and complaint.complaint_type == ComplaintType.COMMISSIONING)

@@ -18,4 +18,6 @@ class Payment(SQLModel, table=True):
     amount: float
     paid_date: date = Field(default_factory=date.today)
     is_advance: bool = Field(default=False)  # the advance recorded at creation
+    # A signed adjustment to the collected amount (Admin only), e.g. a write-off or reversal.
+    is_correction: bool = Field(default=False)
     remarks: Optional[str] = None

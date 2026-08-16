@@ -4,17 +4,26 @@ import { Link, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 
 import StatusBadge from "../components/ui/StatusBadge";
+import TicketPhotos from "../components/features/photos/TicketPhotos";
+import SimilarTickets from "../components/features/ai/SimilarTickets";
+import WhatFixedIt from "../components/features/ai/WhatFixedIt";
+import DeliveryNoteDraft from "../components/features/ai/DeliveryNoteDraft";
+import EditTicketModal from "../components/forms/EditTicketModal";
 import {
   Button,
   Card,
+  Combobox,
   Field,
   Input,
   Modal,
+  Skeleton,
   PageHeader,
   Select,
 } from "../components/ui/primitives";
+import { useToast } from "../components/ui/Toast";
 import {
   addTicketUpdate,
+  cancelTicket,
   draftFollowup,
   recordWorkStarted,
   deleteTicketReport,
@@ -24,6 +33,9 @@ import {
   listMaterials,
   listTeam,
   listTicketReports,
+  setCommissioning,
+  setTicketBill,
+  starTicket,
   updateClaim,
   uploadTicketReport,
 } from "../api/services";
@@ -78,7 +90,12 @@ const EMPTY = {
 
 export default function TicketDetail() {
   const { id } = useParams();
-  const { canEditTasks, isAdmin } = useAuth();
+  const { canEditTasks, isAdmin, isPrivileged } = useAuth();
+  const [editOpen, setEditOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const toast = useToast();
   const ticketId = Number(id);
 
   const [ticket, setTicket] = useState<TD | null>(null);
@@ -89,6 +106,10 @@ export default function TicketDetail() {
   const [uploading, setUploading] = useState(false);
   const [f, setF] = useState({ ...EMPTY });
   const [error, setError] = useState<string | null>(null);
+  // Work-stage crew (item 4/5). `sameTeam` reuses the previous stage's team with one tick;
+  // untick to edit `workTeam` explicitly.
+  const [sameTeam, setSameTeam] = useState(true);
+  const [workTeam, setWorkTeam] = useState<number[]>([]);
 
   const load = () => {
     getTicket(ticketId).then(setTicket);
@@ -108,20 +129,37 @@ export default function TicketDetail() {
     try {
       await uploadTicketReport(ticketId, file);
       listTicketReports(ticketId).then(setReports);
+      toast.success("Report uploaded", file.name);
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "Upload failed");
+      toast.error("Upload failed", detail);
     } finally {
       setUploading(false);
     }
   };
 
-  if (!ticket) return <p className="text-slate-400">Loading…</p>;
+  if (!ticket)
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
 
   const technicians = team.filter((t) => t.team_type === "Technician");
+  // The generic Reports section excludes commissioning PDFs (those live in the commissioning card).
+  const generalReports = reports.filter((r) => r.category !== "commissioning");
   const sorted = ticket.updates;
   const latest = sorted[sorted.length - 1];
   const latestStage = latest?.stage ?? "Logged";
+
+  // The crew from the most recent stage that recorded one — carried forward by default so a
+  // technician confirms "same team" with one tick instead of re-selecting every stage.
+  const previousTeam = [...sorted].reverse().find((u) => u.team.length > 0)?.team ?? [];
+  const previousTeamIds = previousTeam.map((m) => m.id);
+  // The ids that will actually be submitted for a work stage.
+  const effectiveTeam = sameTeam ? previousTeamIds : workTeam;
   const isClosed = ticket.status === "Closed";
   const isAssigned = !!ticket.is_assigned;
 
@@ -156,10 +194,11 @@ export default function TicketDetail() {
     try {
       await fn();
       afterSave();
+      toast.success("Ticket updated");
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "Action failed");
+      toast.error("Couldn't save the update", detail);
     }
   };
 
@@ -197,6 +236,7 @@ export default function TicketDetail() {
         remarks: f.remarks || null,
         close_now: f.closeNow,
         end_date: f.end_date || null,
+        team_ids: effectiveTeam,
         spares: f.spares.map((s) => ({
           source: s.source,
           material_name: s.material_name.trim(),
@@ -288,9 +328,119 @@ export default function TicketDetail() {
               </span>
             )}
             <StatusBadge status={ticket.status} />
+            {isPrivileged && (
+              <button
+                onClick={async () => {
+                  try {
+                    const t = await starTicket(ticket.id, !ticket.starred);
+                    setTicket(t);
+                    toast.success(t.starred ? "Marked important" : "Unmarked important");
+                  } catch (err) {
+                    const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                    toast.error("Couldn't update", detail);
+                  }
+                }}
+                title={ticket.starred ? "Unmark as important" : "Mark as important"}
+                className={`rounded-md border px-3 py-1.5 text-xs font-medium ${
+                  ticket.starred
+                    ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {ticket.starred ? "★ Important" : "☆ Mark important"}
+              </button>
+            )}
+            {isPrivileged && (
+              <button
+                onClick={() => setEditOpen(true)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                ✎ Edit
+              </button>
+            )}
+            {isAdmin && !ticket.mr_pending &&
+              ticket.status !== "Closed" && ticket.status !== "Cancelled" && (
+              <button
+                onClick={() => { setCancelReason(""); setCancelOpen(true); }}
+                className="rounded-md border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+              >
+                Cancel ticket
+              </button>
+            )}
+            <DeliveryNoteDraft ticketId={ticketId} />
+            <Link
+              to={`/tickets/${ticket.id}/print`}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              🖨 Service report
+            </Link>
           </div>
         }
       />
+
+      <EditTicketModal
+        ticket={ticket}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={(t) => setTicket(t)}
+      />
+
+      <Modal open={cancelOpen} title={`Cancel ${ticket.ticket_no}`} onClose={() => setCancelOpen(false)}>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            This cancels the ticket. Its number is kept (never reused) and it can't be reopened.
+          </p>
+          <Field label="Reason *">
+            <Input value={cancelReason} autoFocus
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Why is this ticket being cancelled?" />
+          </Field>
+          <div className="flex gap-2">
+            <Button
+              disabled={cancelling || !cancelReason.trim()}
+              onClick={async () => {
+                setCancelling(true);
+                try {
+                  const t = await cancelTicket(ticket.id, cancelReason.trim());
+                  setTicket(t);
+                  toast.success("Ticket cancelled");
+                  setCancelOpen(false);
+                } catch (err) {
+                  const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+                  toast.error("Couldn't cancel the ticket", detail);
+                } finally {
+                  setCancelling(false);
+                }
+              }}
+            >
+              {cancelling ? "Cancelling…" : "Cancel ticket"}
+            </Button>
+            <Button variant="ghost" onClick={() => setCancelOpen(false)}>Keep ticket</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {ticket.status === "Cancelled" && ticket.cancel_reason && (
+        <div className="mb-6 rounded-md border border-slate-300 bg-slate-100 px-4 py-2 text-sm text-slate-700">
+          <span className="font-medium">Cancelled</span> — {ticket.cancel_reason}
+        </div>
+      )}
+
+      {ticket.edits && ticket.edits.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-2 font-semibold text-slate-700">Edit history</h2>
+          <ul className="space-y-1 text-sm">
+            {ticket.edits.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-baseline gap-2">
+                <span className="text-slate-700">{e.note}</span>
+                <span className="text-xs text-slate-400">
+                  {e.edited_by_name ?? "—"} · {new Date(e.edited_at).toLocaleString("en-IN")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <div className="grid grid-cols-2 gap-y-2 text-sm md:grid-cols-4">
@@ -312,6 +462,21 @@ export default function TicketDetail() {
           )}
         </div>
       </Card>
+
+      {ticket.work_type === "Repaired Service" && (
+        <BillingCard ticket={ticket} canEdit={isPrivileged} onSaved={setTicket} />
+      )}
+
+      {ticket.is_commissioning && (
+        <CommissioningCard
+          ticket={ticket}
+          canEdit={canEditTasks}
+          canUpload={isAdmin}
+          reports={reports.filter((r) => r.category === "commissioning")}
+          onSaved={setTicket}
+          onReportsChanged={() => listTicketReports(ticketId).then(setReports)}
+        />
+      )}
 
       <Card className="mb-6 flex items-center gap-4">
         <QRCodeSVG value={mobileUrl} size={92} />
@@ -387,7 +552,7 @@ export default function TicketDetail() {
             <div className="mb-3 flex items-center gap-3">
               <h2 className="font-semibold text-slate-700">Reports (PDF)</h2>
               <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                {reports.length}
+                {generalReports.length}
               </span>
             </div>
             {isAdmin && (
@@ -398,7 +563,7 @@ export default function TicketDetail() {
               </label>
             )}
             <div className="space-y-2">
-              {reports.map((r) => (
+              {generalReports.map((r) => (
                 <div key={r.id}
                   className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
                   <div>
@@ -422,10 +587,17 @@ export default function TicketDetail() {
                   )}
                 </div>
               ))}
-              {reports.length === 0 && <p className="text-sm text-slate-400">No reports uploaded.</p>}
+              {generalReports.length === 0 && <p className="text-sm text-slate-400">No reports uploaded.</p>}
             </div>
           </div>
         </div>
+
+        <TicketPhotos ticketId={ticketId} />
+
+        <SimilarTickets ticketId={ticketId} />
+
+        <WhatFixedIt ticketId={ticketId} />
+
 
         {/* Guided action panel — hidden for view-only (Helper) role */}
         {canEditTasks && (
@@ -445,13 +617,16 @@ export default function TicketDetail() {
                     onChange={(e) => setF({ ...f, action_date: e.target.value })} />
                 </Field>
                 <Field label="Job Lead (Lead Technician)">
-                  <Select value={f.job_lead}
-                    onChange={(e) => setF({ ...f, job_lead: e.target.value })}>
-                    <option value="">Select technician…</option>
-                    {technicians.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </Select>
+                  <Combobox
+                    placeholder="Search technician…"
+                    value={f.job_lead}
+                    onChange={(v) => setF({ ...f, job_lead: v })}
+                    options={technicians.map((t) => ({
+                      value: String(t.id),
+                      label: t.name,
+                      hint: t.skills || undefined,
+                    }))}
+                  />
                 </Field>
                 <Field label="Helpers / support (ctrl/cmd-click for multiple)">
                   <select multiple
@@ -488,6 +663,52 @@ export default function TicketDetail() {
                   <Input type="date" value={f.action_date}
                     onChange={(e) => setF({ ...f, action_date: e.target.value })} />
                 </Field>
+
+                {/* Team on site for this stage — reuse the previous crew with one tick. */}
+                <div className="rounded-md border border-slate-200 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-600">Team on site</span>
+                    {previousTeam.length > 0 && (
+                      <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+                        <input type="checkbox" checked={sameTeam}
+                          onChange={(e) => {
+                            setSameTeam(e.target.checked);
+                            if (!e.target.checked) setWorkTeam(previousTeamIds);
+                          }} />
+                        Same team as before
+                      </label>
+                    )}
+                  </div>
+
+                  {sameTeam && previousTeam.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {previousTeam.map((m) => (
+                        <span key={m.id}
+                          className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">
+                          {m.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <select multiple
+                      className="h-28 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                      value={(sameTeam ? previousTeamIds : workTeam).map(String)}
+                      onChange={(e) => {
+                        setSameTeam(false);
+                        setWorkTeam(Array.from(e.target.selectedOptions, (o) => Number(o.value)));
+                      }}>
+                      {team.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.team_type})</option>
+                      ))}
+                    </select>
+                  )}
+                  {previousTeam.length === 0 && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      No team was recorded at assignment — pick who is on site now.
+                    </p>
+                  )}
+                </div>
+
                 {/* Spares used — add as many as needed, each BSL or Non-BSL */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -698,6 +919,247 @@ function Meta({ label, value }: { label: string; value: string }) {
       <div className="text-xs uppercase tracking-wide text-slate-400">{label}</div>
       <div className="font-medium">{value}</div>
     </div>
+  );
+}
+
+function BillingCard({
+  ticket,
+  canEdit,
+  onSaved,
+}: {
+  ticket: TD;
+  canEdit: boolean;
+  onSaved: (t: TD) => void;
+}) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [billNo, setBillNo] = useState(ticket.bill_no ?? "");
+  const [billDate, setBillDate] = useState(ticket.bill_date ?? "");
+  const [remarks, setRemarks] = useState(ticket.bill_remarks ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const open = () => {
+    setBillNo(ticket.bill_no ?? "");
+    setBillDate(ticket.bill_date ?? "");
+    setRemarks(ticket.bill_remarks ?? "");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const t = await setTicketBill(ticket.id, {
+        bill_no: billNo.trim() || null,
+        bill_date: billDate || null,
+        bill_remarks: remarks.trim() || null,
+      });
+      onSaved(t);
+      toast.success(billNo.trim() ? "Bill saved" : "Billing cleared");
+      setEditing(false);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error("Couldn't save billing", detail);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const billed = !!ticket.bill_no;
+
+  return (
+    <Card className="mb-6">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-700">Billing</h2>
+        {canEdit && (
+          <button onClick={open}
+            className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
+            {billed ? "Edit bill" : "Add bill"}
+          </button>
+        )}
+      </div>
+      {billed ? (
+        <div className="grid grid-cols-2 gap-y-2 text-sm md:grid-cols-4">
+          <Meta label="Bill no." value={ticket.bill_no ?? "—"} />
+          <Meta label="Bill date" value={ticket.bill_date ?? "—"} />
+          <Meta label="Remarks" value={ticket.bill_remarks ?? "—"} />
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">Not billed yet.</p>
+      )}
+
+      <Modal open={editing} title={`Billing — ${ticket.ticket_no}`} onClose={() => setEditing(false)}>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Bill number">
+              <Input value={billNo} autoFocus placeholder="e.g. INV-2026-0042"
+                onChange={(e) => setBillNo(e.target.value)} />
+            </Field>
+            <Field label="Bill date">
+              <Input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Remarks">
+            <Input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          </Field>
+          <p className="text-xs text-slate-400">
+            The bill drives the outstanding balance and payment follow-up on the Payments page.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save bill"}</Button>
+          </div>
+        </div>
+      </Modal>
+    </Card>
+  );
+}
+
+function CommissioningCard({
+  ticket,
+  canEdit,
+  canUpload,
+  reports,
+  onSaved,
+  onReportsChanged,
+}: {
+  ticket: TD;
+  canEdit: boolean;
+  canUpload: boolean;
+  reports: TicketReport[];
+  onSaved: (t: TD) => void;
+  onReportsChanged: () => void;
+}) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [status, setStatus] = useState(ticket.commissioning_status ?? "");
+  const [remarks, setRemarks] = useState(ticket.commissioning_remarks ?? "");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const open = () => {
+    setStatus(ticket.commissioning_status ?? "");
+    setRemarks(ticket.commissioning_remarks ?? "");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const t = await setCommissioning(ticket.id, {
+        status: status.trim() || null,
+        remarks: remarks.trim() || null,
+      });
+      onSaved(t);
+      toast.success("Installation report saved");
+      setEditing(false);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error("Couldn't save the report", detail);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onUpload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      await uploadTicketReport(ticket.id, file, "commissioning");
+      onReportsChanged();
+      toast.success("Installation PDF uploaded", file.name);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error("Upload failed", detail);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const filled = !!(ticket.commissioning_status || ticket.commissioning_remarks);
+
+  return (
+    <Card className="mb-6 border-sky-200 bg-sky-50/40">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold text-slate-700">Installation / Commissioning report</h2>
+        {canEdit && (
+          <button onClick={open}
+            className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-white">
+            {filled ? "Edit report" : "Add report"}
+          </button>
+        )}
+      </div>
+
+      {filled ? (
+        <div className="grid grid-cols-1 gap-y-2 text-sm md:grid-cols-2">
+          <Meta label="Status" value={ticket.commissioning_status ?? "—"} />
+          <Meta label="Remarks" value={ticket.commissioning_remarks ?? "—"} />
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400">No installation report recorded yet.</p>
+      )}
+
+      {/* Installation PDFs */}
+      <div className="mt-4 border-t border-sky-100 pt-3">
+        <div className="mb-2 flex items-center gap-3">
+          <span className="text-sm font-medium text-slate-600">Installation PDFs</span>
+          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600">
+            {reports.length}
+          </span>
+          {canUpload && (
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs hover:bg-slate-50">
+              <input type="file" accept="application/pdf,.pdf" className="hidden"
+                onChange={(e) => { onUpload(e.target.files?.[0]); e.target.value = ""; }} />
+              {uploading ? "Uploading…" : "⬆ Upload PDF"}
+            </label>
+          )}
+        </div>
+        <div className="space-y-2">
+          {reports.map((r) => (
+            <div key={r.id}
+              className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+              <div>
+                <button onClick={() => downloadTicketReport(ticket.id, r.id, r.original_name)}
+                  className="font-medium text-sky-600 hover:underline">📄 {r.original_name}</button>
+                <div className="text-xs text-slate-400">
+                  {(r.size / 1024).toFixed(0)} KB · {r.uploaded_by_name ?? "—"} ·{" "}
+                  {new Date(r.uploaded_at).toLocaleString()}
+                </div>
+              </div>
+              {canUpload && (
+                <button
+                  onClick={() => {
+                    if (window.confirm("Delete this PDF?"))
+                      deleteTicketReport(ticket.id, r.id).then(onReportsChanged);
+                  }}
+                  className="text-xs font-medium text-rose-600 hover:underline">
+                  Delete
+                </button>
+              )}
+            </div>
+          ))}
+          {reports.length === 0 && <p className="text-sm text-slate-400">No installation PDFs uploaded.</p>}
+        </div>
+      </div>
+
+      <Modal open={editing} title={`Installation report — ${ticket.ticket_no}`} onClose={() => setEditing(false)}>
+        <div className="space-y-3">
+          <Field label="Status">
+            <Input value={status} autoFocus placeholder="e.g. Installed & running / Pending trial"
+              onChange={(e) => setStatus(e.target.value)} />
+          </Field>
+          <Field label="Remarks">
+            <textarea
+              className="h-24 w-full rounded-md border border-slate-300 p-2 text-sm focus:border-slate-500 focus:outline-none"
+              value={remarks} onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Commissioning notes…" />
+          </Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save report"}</Button>
+          </div>
+        </div>
+      </Modal>
+    </Card>
   );
 }
 
